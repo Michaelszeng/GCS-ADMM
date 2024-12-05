@@ -10,12 +10,14 @@ import sys
 import os
 import time
 
+np.set_printoptions(edgeitems=30, linewidth=250, precision=4, suppress=True)
+
 from utils import *
 
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test2 import As, bs, n
+from test3 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -55,7 +57,9 @@ for v in V:
     z_v1 = z_v[v][:n]
     z_v2 = z_v[v][n:]
     diff = z_v1 - z_v2
-    prog.AddCost(diff.dot(diff))
+    A = np.hstack([np.eye(z_v1.shape[0]), -np.eye(z_v2.shape[0])])
+    b = np.zeros(A.shape[0])
+    prog.AddL2NormCost(A, b, np.hstack([z_v1, z_v2]))
     
 
 ################################################################################
@@ -68,12 +72,12 @@ for v in V:
         idx = slice(i * n, (i + 1) * n)
 
         # Constraint 1: A_v z_{v,i} ≤ y_v b_v
-        for i in range(m):
-            prog.AddConstraint(As[v][i] @ z_v[v][idx] <= y_v[v] * bs[v][i])
+        for j in range(m):
+            prog.AddConstraint(As[v][j] @ z_v[v][idx] <= y_v[v] * bs[v][j])
 
         # Constraint 2: A_v (x_{v,i} - z_{v,i}) ≤ (1 - y_v) b_v
-        for i in range(m):
-            prog.AddConstraint(As[v][i] @ (x_v[v][idx] - z_v[v][idx]) <= (1 - y_v[v]) * bs[v][i])
+        for j in range(m):
+            prog.AddConstraint(As[v][j] @ (x_v[v][idx] - z_v[v][idx]) <= (1 - y_v[v]) * bs[v][j])
         
 # Edge Point Containment Constraints
 for v in V:
@@ -83,12 +87,12 @@ for v in V:
             idx = slice(i * n, (i + 1) * n)
 
             # Constraint 3: A_v z^e_{v,i} ≤ y_e b_v
-            for i in range(m):
-                prog.AddConstraint(As[v][i] @ z_v_e[(v, e)][idx] <= y_e[e] * bs[v][i])
+            for j in range(m):
+                prog.AddConstraint(As[v][j] @ z_v_e[(v, e)][idx] <= y_e[e] * bs[v][j])
 
             # Constraint 4: A_v (x_{v,i} - z^e_{v,i}) ≤ (1 - y_e) b_v
-            for i in range(m):
-                prog.AddConstraint(As[v][i] @ (x_v[v][idx] - z_v_e[(v, e)][idx]) <= (1 - y_e[e]) * bs[v][i])
+            for j in range(m):
+                prog.AddConstraint(As[v][j] @ (x_v[v][idx] - z_v_e[(v, e)][idx]) <= (1 - y_e[e]) * bs[v][j])
             
 # Path Continuity Constraints
 for e in E:
@@ -144,18 +148,33 @@ if result.is_success():
         x_v_sol[v] = result.GetSolution(x_v[v])
         z_v_sol[v] = result.GetSolution(z_v[v])
         y_v_sol[v] = result.GetSolution(y_v[v])
+        
+        # make it more readable
+        if np.abs(y_v_sol[v]) < 1e-6:
+            y_v_sol[v] = 0
+        elif np.abs(y_v_sol[v]) > 1-1e-6:
+            y_v_sol[v] = 1
 
     # Variables for each edge e ∈ E
     for e in E:
         y_e_sol[e] = result.GetSolution(y_e[e])
+        
+        # make it more readable
+        if np.abs(y_e_sol[e]) < 1e-6:
+            y_e_sol[e] = 0
+        elif np.abs(y_e_sol[e]) > 1-1e-6:
+            y_e_sol[e] = 1
 
     # Variables z^e_v for each vertex v ∈ V and each incident edge e ∈ I_v
     for v in V:
         for e in I_v_in[v] + I_v_out[v]:
             z_v_e_sol[(v, e)] = result.GetSolution(z_v_e[(v, e)])
     
-    print(f"x_v_sol: {x_v_sol}")
-    print(f"y_v_sol: {y_v_sol}")
+    print(f"Optimal Cost: {result.get_optimal_cost()}")
+    print(f"{x_v_sol=}")
+    print(f"{y_v_sol=}")
+    
+    visualize_results(As, bs, x_v_sol, y_v_sol)
     
 else:
     print("solve failed.")

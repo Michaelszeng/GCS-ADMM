@@ -4,9 +4,11 @@ from pydrake.all import (
 )
 
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
 
 
-def convert_pt_to_polytope(pt):
+def convert_pt_to_polytope(pt, eps=1e-6):
     """
     Converts a point into a degenerate polytope defined by Ax <= b.
 
@@ -20,7 +22,7 @@ def convert_pt_to_polytope(pt):
     n = len(pt)
 
     A = np.vstack([np.eye(n), -np.eye(n)])
-    b = np.hstack([pt, -pt])
+    b = np.hstack([pt + eps, -pt + eps])
     
     return A, b
 
@@ -93,3 +95,62 @@ def delta(v1, v2):
     if (v1 == 's' or v1 == 't') and v1 == v2:
         return 1
     return 0
+
+
+def visualize_results(As, bs, x_v, y_v):
+    """
+    Visualize 2D polytopes, points, and line segments.
+
+    Args:
+        As: `As` dictionary from the test case definition.
+        bs: `bs` dictionary from the test case definition.
+        x_v: value of `x_v` dictionary from GCS MICP solution.
+        y_v: value of `y_v` dictionary from GCS MICP solution.
+    """
+    
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    # Define colors for polytopes
+    colors = plt.cm.tab10(np.linspace(0, 1, len(As)))
+
+    for idx, (key, A) in enumerate(As.items()):
+        b = bs[key]
+        
+        # Generate vertices of the polytope
+        vertices = []
+        for i in range(A.shape[0]):
+            for j in range(i + 1, A.shape[0]):
+                # Solve for intersection points
+                try:
+                    point = np.linalg.solve(A[[i, j]], b[[i, j]])
+                    if np.all(A @ point <= b + 1e-6):  # Check if the point is inside the polytope
+                        vertices.append(point)
+                except np.linalg.LinAlgError:
+                    continue
+
+        # Sort vertices in counterclockwise order
+        if vertices:
+            vertices = np.array(vertices)
+            mean = np.mean(vertices, axis=0)
+            angles = np.arctan2(vertices[:, 1] - mean[1], vertices[:, 0] - mean[0])
+            vertices = vertices[np.argsort(angles)]
+
+            # Add polytope as a polygon
+            polygon = Polygon(vertices, closed=True, alpha=0.4, color=colors[idx])
+            ax.add_patch(polygon)
+
+        # Plot points and line segments based on y_v
+        if key in x_v and key in y_v:
+            points = x_v[key].reshape(2, 2)  # Reshape to two points
+
+            # Plot points if y_v[key] > 0.5
+            if y_v[key] > 0.5:
+                ax.plot(points[:, 0], points[:, 1], 'o', color=colors[idx], label=f'Polytope {key}')
+
+                # Draw line segment connecting the two points
+                ax.plot(points[:, 0], points[:, 1], '-', color=colors[idx])
+
+    # Configure plot
+    ax.set_aspect('equal', adjustable='datalim')
+    ax.legend()
+    plt.show()
