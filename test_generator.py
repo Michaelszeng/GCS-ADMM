@@ -23,8 +23,13 @@ def generate_test_2D(filename, x_low, x_high, y_low, y_high, resolution, num_set
     def write_test_to_file(filename, As, bs, s, t):
         with open(filename, 'w') as f:
             # Write imports
-            f.write("import numpy as np\n\n")
-            f.write("from utils import convert_pt_to_polytope\n\n")
+            f.write("import numpy as np\n")
+            f.write("import os\n")
+            f.write("import sys\n\n")
+
+            f.write("path_to_utils = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))\n")
+            f.write("sys.path.append(path_to_utils)\n")
+            f.write("from utils import convert_pt_to_polytope, visualize_results\n\n")
             
             # Write source and target points
             f.write(f"s = np.array({s.tolist()})\n\n")
@@ -63,7 +68,12 @@ def generate_test_2D(filename, x_low, x_high, y_low, y_high, resolution, num_set
                 first_key = numerical_keys[0]
                 f.write(f"n = A{first_key}.shape[1]\n")
             else:
-                f.write("n = 0  # No polytopes defined\n")
+                f.write("n = 0  # No polytopes defined\n\n\n")
+                
+            f.write("# If file is run directly, visualize the GCS\n")
+            f.write("if __name__ == \"__main__\":\n")
+            f.write("   visualize_results(As, bs, {**{i: 0 for i in range(len(As)-2)}, **{\"s\": np.hstack([s,s]), \"t\": np.hstack([t,t])}}, {**{i: 0 for i in range(len(As)-2)}, **{\"s\": 1, \"t\": 1}})")
+    
         
     def generate_random_point_in_hpoly(hpolyhedron):
         """
@@ -158,4 +168,4 @@ def generate_test_2D(filename, x_low, x_high, y_low, y_high, resolution, num_set
     write_test_to_file(filename, As, bs, x_s[:2], x_t[:2])
     
 
-generate_test_2D("test_data/test_autogen2.py", -5, 5, -5, 5, 0.1, 10)
+generate_test_2D("test_data/test_autogen3.py", -5, 5, -5, 5, 0.1, 10)

@@ -1,6 +1,10 @@
 import numpy as np
+import os
+import sys
 
-from utils import convert_pt_to_polytope
+path_to_utils = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(path_to_utils)
+from utils import convert_pt_to_polytope, visualize_results
 
 s = np.array([-2.8886393913556407, 3.145500903658718])
 
@@ -68,3 +72,7 @@ bs = {
 }
 
 n = A0.shape[1]
+
+# If file is run directly, visualize the GCS
+if __name__ == "__main__":
+    visualize_results(As, bs, {**{i: 0 for i in range(len(As)-2)}, **{"s": np.hstack([s,s]), "t": np.hstack([t,t])}}, {**{i: 0 for i in range(len(As)-2)}, **{"s": 1, "t": 1}})

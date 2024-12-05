@@ -6,8 +6,12 @@ Right triangle with vertices at (0.9, 0), (1.9, 0), and (1.9, 1)
 """
 
 import numpy as np
+import os
+import sys
 
-from utils import convert_pt_to_polytope
+path_to_utils = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(path_to_utils)
+from utils import convert_pt_to_polytope, visualize_results
 
 A1 = np.array([[1, 1],
                [-1, 0],
@@ -32,6 +36,10 @@ bs = {"s": b_s, "t": b_t, 0: b1, 1: b2}
 
 n = A1.shape[1]
 
+# If file is run directly, visualize the GCS
+if __name__ == "__main__":
+    visualize_results(As, bs, {**{i: 0 for i in range(len(As)-2)}, **{"s": np.hstack([s,s]), "t": np.hstack([t,t])}}, {**{i: 0 for i in range(len(As)-2)}, **{"s": 1, "t": 1}})
+    
 """
 Solution:
 
