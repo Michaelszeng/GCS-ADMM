@@ -2,6 +2,7 @@ from pydrake.all import (
     MathematicalProgram, 
     Solve, 
     Expression,
+    Formula,
     Evaluate,
     Constraint,
     Variable,
@@ -10,7 +11,7 @@ from pydrake.all import (
     ge,
     logical_and,
 )
-from pydrake.symbolic import max as sym_max
+from pydrake.symbolic import max as sym_max, is_true
 
 import numpy as np
 
@@ -144,7 +145,11 @@ def indicator_cost(f, x):
     """
     penalty = 1e6
     constraints = f(*x)
-    return 1e6*Evaluate(logical_and(*constraints))
+    if isinstance(constraints[0], Formula):
+        constraints
+    else:
+        return all(constraints)
+    return is_true(logical_and(*constraints))
     print(f"violations: {violations}")
     return 0
 
