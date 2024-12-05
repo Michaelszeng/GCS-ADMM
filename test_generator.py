@@ -3,14 +3,83 @@ Courtesy of Alex Amice.
 """
 from pydrake.all import (
     VPolytope,
+    HPolyhedron,
 )
 
 import numpy as np
 import scipy.spatial as spatial
 from scipy.stats.qmc import LatinHypercube
 
+from utils import *
 
-def generate_grid_path_problem(x_low, x_high, y_low, y_high, resolution, num_sets):
+
+def generate_test_2D(filename, x_low, x_high, y_low, y_high, resolution, num_sets):
+    """
+    Fairly overcomplicated function to generate test examples for 2D GCS traj 
+    opt problems.
+    
+    The resulting test is visualized and written to `filename`.
+    """
+    def write_test_to_file(filename, As, bs, s, t):
+        with open(filename, 'w') as f:
+            # Write imports
+            f.write("import numpy as np\n\n")
+            f.write("from utils import convert_pt_to_polytope\n\n")
+            
+            # Write source and target points
+            f.write(f"s = np.array({s.tolist()})\n\n")
+            f.write(f"t = np.array({t.tolist()})\n\n")
+            
+            # Write conversion of points to polytopes
+            f.write("A_s, b_s = convert_pt_to_polytope(s, eps=1e-6)\n")
+            f.write("A_t, b_t = convert_pt_to_polytope(t, eps=1e-6)\n\n")
+            
+            # Write A and b matrices for numerical keys
+            numerical_keys = sorted([k for k in As.keys() if isinstance(k, int)])
+            for key in numerical_keys:
+                A = As[key]
+                b = bs[key]
+                f.write(f"A{key} = np.array({A.tolist()})\n\n")
+                f.write(f"b{key} = np.array({b.tolist()})\n\n")
+            
+            # Assemble As dictionary
+            f.write("As = {\n")
+            f.write("    \"s\": A_s,\n")
+            f.write("    \"t\": A_t,\n")
+            for key in numerical_keys:
+                f.write(f"    {key}: A{key},\n")
+            f.write("}\n\n")
+            
+            # Assemble bs dictionary
+            f.write("bs = {\n")
+            f.write("    \"s\": b_s,\n")
+            f.write("    \"t\": b_t,\n")
+            for key in numerical_keys:
+                f.write(f"    {key}: b{key},\n")
+            f.write("}\n\n")
+            
+            # Define variable n
+            if numerical_keys:
+                first_key = numerical_keys[0]
+                f.write(f"n = A{first_key}.shape[1]\n")
+            else:
+                f.write("n = 0  # No polytopes defined\n")
+        
+    def generate_random_point_in_hpoly(hpolyhedron):
+        """
+        Generate a random point inside an HPolyhedron.
+        """
+        A = hpolyhedron.A()
+        b = hpolyhedron.b()
+        dim = A.shape[1]
+
+        # Sample a random point within the bounds defined by A * x <= b
+        # For simplicity, using rejection sampling
+        while True:
+            candidate_point = np.random.uniform(-10, 10, size=dim)  # Adjust range as needed
+            if np.all(A @ candidate_point <= b):
+                return candidate_point
+            
     grid_x_size = int((x_high - x_low) / resolution)
     grid_y_size = int((y_high - y_low) / resolution)
     x = np.linspace(x_low, x_high, grid_x_size)
@@ -25,13 +94,14 @@ def generate_grid_path_problem(x_low, x_high, y_low, y_high, resolution, num_set
     seeds = lhs.random(n=num_sets)
     seeds[:,0] = (x_high - x_low) * seeds[:,0] + x_low
     seeds[:,1] = (y_high - y_low) * seeds[:,1] + y_low
-    #
     distances = spatial.distance.cdist(seeds, seeds)
     distances[distances == 0] = np.inf
 
     seed_radius = np.min(distances, axis=1)
-    vpolytopes = []
-    for seed, radius in zip(seeds, seed_radius):
+    hpolyhedrons = []
+    As = dict()
+    bs = dict()
+    for i, (seed, radius) in enumerate(zip(seeds, seed_radius)):
         # Compute distances to the given point
         local_distances = np.linalg.norm(grid_points - seed, axis=1)
 
@@ -60,4 +130,32 @@ def generate_grid_path_problem(x_low, x_high, y_low, y_high, resolution, num_set
                         vpoly = vpoly_tmp
                 except ValueError:
                     vpoly = None
-        vpolytopes.append(VPolytope(potential_vertices.T))
+        new_hpoly = HPolyhedron(VPolytope(potential_vertices.T))
+        hpolyhedrons.append(new_hpoly)  # not efficient but it works
+        As[i] = new_hpoly.A()
+        bs[i] = new_hpoly.b()
+    
+    # Randomly select two different hpolyhedrons for source and target
+    hpoly_indices = np.random.choice(len(hpolyhedrons), size=2, replace=False)
+    source_hpoly = hpolyhedrons[hpoly_indices[0]]
+    target_hpoly = hpolyhedrons[hpoly_indices[1]]
+
+    # Generate random source and target points within the selected hpolyhedrons
+    x_s = generate_random_point_in_hpoly(source_hpoly)
+    x_t = generate_random_point_in_hpoly(target_hpoly)
+    
+    A_s, b_s = convert_pt_to_polytope(x_s, eps=1e-6)
+    A_t, b_t = convert_pt_to_polytope(x_t, eps=1e-6)
+    
+    x_s = np.hstack((x_s, x_s))
+    x_t = np.hstack((x_t, x_t))
+    
+    As = {**As, **{"s": A_s, "t": A_t}}
+    bs = {**bs, **{"s": b_s, "t": b_t}}
+    
+    visualize_results(As, bs, {**{i: 0 for i in range(seeds.shape[0])}, **{"s": x_s, "t": x_t}}, {**{i: 0 for i in range(seeds.shape[0])}, **{"s": 1, "t": 1}})
+    
+    write_test_to_file(filename, As, bs, x_s[:2], x_t[:2])
+    
+
+generate_test_2D("test_data/test_autogen2.py", -5, 5, -5, 5, 0.1, 10)

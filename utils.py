@@ -97,9 +97,17 @@ def delta(v1, v2):
     return 0
 
 
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
+
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.patches import Polygon
+
 def visualize_results(As, bs, x_v, y_v):
     """
-    Visualize 2D polytopes, points, and line segments.
+    Visualize 2D result of GCS piecewise-linear traj opt.
 
     Args:
         As: `As` dictionary from the test case definition.
@@ -112,6 +120,10 @@ def visualize_results(As, bs, x_v, y_v):
 
     # Define colors for polytopes
     colors = plt.cm.tab10(np.linspace(0, 1, len(As)))
+    
+    # Initialize bounds for axis adjustment
+    x_min, x_max = float('inf'), float('-inf')
+    y_min, y_max = float('inf'), float('-inf')
 
     for idx, (key, A) in enumerate(As.items()):
         b = bs[key]
@@ -135,22 +147,44 @@ def visualize_results(As, bs, x_v, y_v):
             angles = np.arctan2(vertices[:, 1] - mean[1], vertices[:, 0] - mean[0])
             vertices = vertices[np.argsort(angles)]
 
-            # Add polytope as a polygon
-            polygon = Polygon(vertices, closed=True, alpha=0.4, color=colors[idx])
-            ax.add_patch(polygon)
+            # Add polytope as a polygon with a label for the legend
+            if key != 's' and key != 't':
+                polygon = Polygon(vertices, closed=True, alpha=0.4, color=colors[idx], label=f'Polytope {key}')
+                ax.add_patch(polygon)
+
+            # Update bounds
+            x_min = min(x_min, vertices[:, 0].min())
+            x_max = max(x_max, vertices[:, 0].max())
+            y_min = min(y_min, vertices[:, 1].min())
+            y_max = max(y_max, vertices[:, 1].max())
 
         # Plot points and line segments based on y_v
         if key in x_v and key in y_v:
-            points = x_v[key].reshape(2, 2)  # Reshape to two points
-
             # Plot points if y_v[key] > 0.5
             if y_v[key] > 0.5:
-                ax.plot(points[:, 0], points[:, 1], 'o', color=colors[idx], label=f'Polytope {key}')
-
+                points = x_v[key].reshape(2, 2)  # Reshape to two points
+                
+                # Plot points without labels to avoid multiple legend entries
+                ax.plot(points[:, 0], points[:, 1], 'o', color=colors[idx])
+                
                 # Draw line segment connecting the two points
                 ax.plot(points[:, 0], points[:, 1], '-', color=colors[idx])
 
-    # Configure plot
+                # Update bounds
+                x_min = min(x_min, points[:, 0].min())
+                x_max = max(x_max, points[:, 0].max())
+                y_min = min(y_min, points[:, 1].min())
+                y_max = max(y_max, points[:, 1].max())
+
+    # Configure plot limits to ensure visibility of all objects
+    padding = 0.1 * max(x_max - x_min, y_max - y_min)
+    ax.set_xlim(x_min - padding, x_max + padding)
+    ax.set_ylim(y_min - padding, y_max + padding)
     ax.set_aspect('equal', adjustable='datalim')
-    ax.legend()
+    
+    # Create a unique legend based on the polygon labels
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys())
+    
     plt.show()

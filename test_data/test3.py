@@ -3,7 +3,7 @@
 
 Right triangle with vertices at (0, 0), (1, 0), and (0, 1).
 Right triangle with vertices at (0.9, 0), (1.9, 0), and (1.9, 1)
-Isosceles triangle with vertices at (0, 1), (2, 1), and (1, 1.333)
+Isosceles triangle with vertices at (-0.3, 0.9), (2.3, 0.9), and (1, 1.333)
 """
 
 import numpy as np

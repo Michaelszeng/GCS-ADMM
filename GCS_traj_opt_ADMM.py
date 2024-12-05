@@ -23,3 +23,6 @@ V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
 print(f"E: {E}")
 
+
+# def get_next_vertex_values(rho, x_e_k, mu):
+    
