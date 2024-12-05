@@ -53,6 +53,7 @@ for v in V:
 ################################################################################
 ##### Cost
 ################################################################################
+# Path length penalty
 for v in V:
     z_v1 = z_v[v][:n]
     z_v2 = z_v[v][n:]
@@ -60,6 +61,10 @@ for v in V:
     A = np.hstack([np.eye(z_v1.shape[0]), -np.eye(z_v2.shape[0])])
     b = np.zeros(A.shape[0])
     prog.AddL2NormCost(A, b, np.hstack([z_v1, z_v2]))
+    
+# Slight penalty for activating edges (to prevent 0-length 2-cycles from happening)
+for e in E:
+    prog.AddCost(1e-4 * y_e[e])
     
 
 ################################################################################
@@ -170,9 +175,10 @@ if result.is_success():
         for e in I_v_in[v] + I_v_out[v]:
             z_v_e_sol[(v, e)] = result.GetSolution(z_v_e[(v, e)])
     
-    print(f"Optimal Cost: {result.get_optimal_cost()}")
-    print(f"{x_v_sol=}")
-    print(f"{y_v_sol=}")
+    print(f"Optimal Cost: {result.get_optimal_cost()}\n")
+    print(f"{x_v_sol=}\n")
+    print(f"{y_v_sol=}\n")
+    print(f"{y_e_sol=}\n")
     
     visualize_results(As, bs, x_v_sol, y_v_sol)
     

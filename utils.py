@@ -92,7 +92,7 @@ def delta(v1, v2):
     Returns:
         Value of delta_{v1, v2} variable.
     """
-    if (v1 == 's' or v1 == 't') and v1 == v2:
+    if v1 == v2 == 's' or v1 == v2 == 't':
         return 1
     return 0
 
