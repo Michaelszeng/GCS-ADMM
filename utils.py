@@ -27,7 +27,8 @@ def convert_pt_to_polytope(pt):
 
 def build_graph(As, bs):
     """
-    Generate vertex and edge sets for GCS based on convex sets defined by As and bs.
+    Generate vertex and edge sets and incidence lists for each vertex for the 
+    GCS based on convex sets defined by As and bs.
 
     Args:
         As (np.ndarray): 3D numpy array where As[i] is the matrix A for polytope i.
@@ -36,8 +37,10 @@ def build_graph(As, bs):
     Returns:
         set: A set of vertices.
         set: A set of edges, where each edge is represented as a tuple of two vertices.
+        dict: where I_v_in[v] is a list of edges incident to vertex v.
+        dict: where I_v_out[v] is a list of edges incident to vertex v.
     """
-    vertices = set(As.keys())
+    vertices = set(As.keys())  # vertex set
     edges = set()
 
     def check_overlap(A1, b1, A2, b2):
@@ -58,13 +61,22 @@ def build_graph(As, bs):
         result = Solve(prog)
         return result.is_success()
 
+    # Build edge set
     for v1 in vertices:
         for v2 in vertices:
             if v1 != v2:
                 if check_overlap(As[v1], bs[v1], As[v2], bs[v2]):
                     edges.add((v1, v2))
+    
+    # Build incidence lists
+    I_v_in = {v: [] for v in vertices}
+    I_v_out = {v: [] for v in vertices}
+    for e in edges:
+        v, w = e
+        I_v_out[v].append(e)
+        I_v_in[w].append(e)
 
-    return vertices, edges
+    return vertices, edges, I_v_in, I_v_out
 
 
 def delta(v1, v2):

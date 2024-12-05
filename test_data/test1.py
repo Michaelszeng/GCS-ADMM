@@ -21,3 +21,5 @@ A_t, b_t = convert_pt_to_polytope(t)
 
 As = {"s": A_s, "t": A_t, 0: A1}
 bs = {"s": b_s, "t": b_t, 0: b1}
+
+n = A1.shape[1]

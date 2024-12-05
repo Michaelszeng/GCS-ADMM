@@ -15,9 +15,151 @@ from utils import *
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test1 import As, bs
+from test2 import As, bs, n
 
+V, E, I_v_in, I_v_out = build_graph(As, bs)
+print(f"V: {V}")
+print(f"E: {E}")
 
-V, E = build_graph(As, bs)
-print(V)
-print(E)
+prog = MathematicalProgram()
+
+################################################################################
+##### Variable Definitions
+################################################################################
+x_v = {}
+z_v = {}
+y_v = {}
+y_e = {}
+z_v_e = {}
+
+# Variables for each vertex v ∈ V
+for v in V:
+    x_v[v] = prog.NewContinuousVariables(2 * n, f'x_{v}')
+    z_v[v] = prog.NewContinuousVariables(2 * n, f'z_{v}')
+    y_v[v] = prog.NewBinaryVariables(1, f'y_{v}')[0]
+
+# Variables for each edge e ∈ E
+for e in E:
+    y_e[e] = prog.NewBinaryVariables(1, f'y_e_{e}')[0]
+
+# Variables z^e_v for each vertex v ∈ V and each incident edge e ∈ I_v
+for v in V:
+    for e in I_v_in[v] + I_v_out[v]:
+        z_v_e[(v, e)] = prog.NewContinuousVariables(2 * n, f'z_{v}_e_{e}')
+        
+        
+################################################################################
+##### Cost
+################################################################################
+for v in V:
+    z_v1 = z_v[v][:n]
+    z_v2 = z_v[v][n:]
+    diff = z_v1 - z_v2
+    prog.AddCost(diff.dot(diff))
+    
+
+################################################################################
+##### Constraints
+################################################################################
+# Vertex Point Containment Constraints
+for v in V:
+    m = As[v].shape[0]
+    for i in range(2):
+        idx = slice(i * n, (i + 1) * n)
+
+        # Constraint 1: A_v z_{v,i} ≤ y_v b_v
+        for i in range(m):
+            prog.AddConstraint(As[v][i] @ z_v[v][idx] <= y_v[v] * bs[v][i])
+
+        # Constraint 2: A_v (x_{v,i} - z_{v,i}) ≤ (1 - y_v) b_v
+        for i in range(m):
+            prog.AddConstraint(As[v][i] @ (x_v[v][idx] - z_v[v][idx]) <= (1 - y_v[v]) * bs[v][i])
+        
+# Edge Point Containment Constraints
+for v in V:
+    m = As[v].shape[0]
+    for e in I_v_in[v] + I_v_out[v]:
+        for i in range(2):
+            idx = slice(i * n, (i + 1) * n)
+
+            # Constraint 3: A_v z^e_{v,i} ≤ y_e b_v
+            for i in range(m):
+                prog.AddConstraint(As[v][i] @ z_v_e[(v, e)][idx] <= y_e[e] * bs[v][i])
+
+            # Constraint 4: A_v (x_{v,i} - z^e_{v,i}) ≤ (1 - y_e) b_v
+            for i in range(m):
+                prog.AddConstraint(As[v][i] @ (x_v[v][idx] - z_v_e[(v, e)][idx]) <= (1 - y_e[e]) * bs[v][i])
+            
+# Path Continuity Constraints
+for e in E:
+    v, w = e
+    # Constraint 5: z_{v,2}^e = z_{w,1}^e for each edge e = (v, w)
+    for d in range(n):  # n because w only check equivalence of one point in each z_v_e (which represents two points)
+        prog.AddConstraint(z_v_e[(v, e)][n+d] == z_v_e[(w, e)][d])
+    
+# Flow Constraints
+for v in V:
+    delta_sv = delta('s', v)
+    delta_tv = delta('t', v)
+    
+    # Constraint 6: y_v = sum_{e ∈ I_v_in} y_e + δ_{sv} = sum_{e ∈ I_v_out} y_e + δ_{tv}, y_v ≤ 1
+    # y_v = sum_{e ∈ I_v_in} y_e + δ_{sv}
+    prog.AddConstraint(y_v[v] == sum(y_e[e] for e in I_v_in[v]) + delta_sv)
+    # y_v = sum_{e ∈ I_v_out} y_e + δ_{tv}
+    prog.AddConstraint(y_v[v] == sum(y_e[e] for e in I_v_out[v]) + delta_tv)
+    # y_v ≤ 1
+    prog.AddConstraint(y_v[v] <= 1)
+    
+# Flow Constraints on z_v
+for v in V:
+    delta_sv = delta('s', v)
+    delta_tv = delta('t', v)
+    
+    # Constraint 7: z_v = sum_{e ∈ I_v_in} z^e_v + δ_{sv} x_v = sum_{e ∈ I_v_out} z^e_v + δ_{tv} x_v
+    for d in range(2*n):   # 2n because z_v is 2n-dimensional
+        # Constraints: z_v = sum_in_z_v_e + δ_{sv} x_v
+        prog.AddLinearEqualityConstraint(z_v[v][d] == sum(z_v_e[(v, e)][d] for e in I_v_in[v]) + delta_sv * x_v[v][d])
+        # Constraints: z_v = sum_out_z_v_e + δ_{tv} x_v
+        prog.AddLinearEqualityConstraint(z_v[v][d] == sum(z_v_e[(v, e)][d] for e in I_v_out[v]) + delta_tv * x_v[v][d])
+    
+################################################################################
+##### Solve
+################################################################################
+print("Beginning MICP Solve.")
+start = time.time()
+result = Solve(prog)
+print(f"Solve Time: {time.time() - start}")
+print(f"Solved using: {result.get_solver_id().name()}")
+
+if result.is_success():
+    # Solution retreival
+    x_v_sol = {}
+    z_v_sol = {}
+    y_v_sol = {}
+    y_e_sol = {}
+    z_v_e_sol = {}
+
+    # Variables for each vertex v ∈ V
+    for v in V:
+        x_v_sol[v] = result.GetSolution(x_v[v])
+        z_v_sol[v] = result.GetSolution(z_v[v])
+        y_v_sol[v] = result.GetSolution(y_v[v])
+
+    # Variables for each edge e ∈ E
+    for e in E:
+        y_e_sol[e] = result.GetSolution(y_e[e])
+
+    # Variables z^e_v for each vertex v ∈ V and each incident edge e ∈ I_v
+    for v in V:
+        for e in I_v_in[v] + I_v_out[v]:
+            z_v_e_sol[(v, e)] = result.GetSolution(z_v_e[(v, e)])
+    
+    print(f"x_v_sol: {x_v_sol}")
+    print(f"y_v_sol: {y_v_sol}")
+    
+else:
+    print("solve failed.")
+    print(f"{result.get_solution_result()}")
+    print(f"{result.GetInfeasibleConstraintNames(prog)}")
+    for constraint_binding in result.GetInfeasibleConstraints(prog):
+        print(f"{constraint_binding.variables()}")
