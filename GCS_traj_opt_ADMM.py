@@ -50,7 +50,9 @@ class ConsensusManager():
         # Build variable set for x variables
         for v in V:
             x_v[v] = self.prog.NewContinuousVariables(2 * n, f'x_{v}')
+        for v in V:
             z_v[v] = self.prog.NewContinuousVariables(2 * n, f'z_{v}')
+        for v in V:
             y_v[v] = self.prog.NewBinaryVariables(1, f'y_{v}')[0]
         
         # Build variable set for z variables
@@ -58,10 +60,11 @@ class ConsensusManager():
         for v in V:
             for e in I_v_in[v] + I_v_out[v]:
                 x_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'x_{v}_e_{e}')
-                z_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'z_{v}_e_{e}')
-                
                 if first_z_var is None:
                     first_z_var = x_v_e[(v, e)][0]
+        for v in V:
+            for e in I_v_in[v] + I_v_out[v]:
+                z_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'z_{v}_e_{e}')
         for e in E:
             y_e[e] = self.prog.NewBinaryVariables(1, f'y_e_{e}')[0]
             
@@ -160,12 +163,15 @@ class ConsensusManager():
             vars: np.ndarray, variable array for the variables whose indices in the x variable set are being searched for.
             v: vertex key for the variable/vertex update.
         """
-        if "x_v" in vars[0].get_name():
+        if isinstance(vars, np.ndarray):
+            vars = vars[0]
+        
+        if "x_v" in vars.get_name():
             var = x_v_global[v]
-        elif "z_v" in vars[0].get_name():
+        elif "z_v" in vars.get_name():
             var = z_v_global[v]
-        elif "y_v" in vars[0].get_name():
-            var = y_v_global[v]
+        elif "y_v" in vars.get_name():
+            var = [y_v_global[v]]
         else:
             raise ValueError("Invalid variable name.")
         
@@ -184,12 +190,15 @@ class ConsensusManager():
             v: vertex key for the variable/edge update. (Note: not applicable for y_e)
             e: edge key for the variable/edge update.
         """
-        if "x_v_e" in vars[0].get_name():
+        if isinstance(vars, np.ndarray):
+            vars = vars[0]
+        
+        if "x_v_e" in vars.get_name() or "x_w_e" in vars.get_name():
             var = x_v_e_global[(v, e)]
-        elif "z_v_e" in vars[0].get_name():
+        elif "z_v_e" in vars.get_name() or "z_w_e" in vars.get_name():
             var = z_v_e_global[(v, e)]
-        elif "y_e" in vars[0].get_name():
-            var = y_e_global[e]
+        elif "y_e" in vars.get_name():
+            var = [y_e_global[e]]
         
         idx_first = self.prog.FindDecisionVariableIndex(var[0]) - self.z_idx
         idx_last = self.prog.FindDecisionVariableIndex(var[-1]) - self.z_idx
@@ -229,6 +238,8 @@ def vertex_update(rho, v):
         rho: scalar penalty parameter.
         v: vertex key for the vertex being updated.
     """
+    global x_global
+    
     prog = MathematicalProgram()
     x_v = prog.NewContinuousVariables(2 * n, f'x_v')
     z_v = prog.NewContinuousVariables(2 * n, f'z_v')
@@ -238,18 +249,23 @@ def vertex_update(rho, v):
     # Path Length Penalty: ||z_v1 - z_v2||^2
     z_v1 = z_v[:n]
     z_v2 = z_v[n:]
-    A = np.hstack([np.eye(z_v1.shape[0]), -np.eye(z_v2.shape[0])])
-    b = np.zeros(A.shape[0])
-    prog.AddL2NormCost(A, b, np.hstack([z_v1, z_v2]))
+    A_path_len_penalty = np.hstack([np.eye(z_v1.shape[0]), -np.eye(z_v2.shape[0])])
+    b_path_len_penalty = np.zeros(A_path_len_penalty.shape[0])
+    prog.AddL2NormCost(A_path_len_penalty, b_path_len_penalty, np.hstack([z_v1, z_v2]))
     
     # Concensus Constraint Penalty: (rho/2) * ||Ax + Bz + mu||^2
-    # Define x vector that contain fixed values for all but the variables corresponding to v
-    x = x_global.copy()
-    x[consensus_manager.get_x_var_indices(x_v, v)] = x_v
-    x[consensus_manager.get_x_var_indices(z_v, v)] = z_v
-    x[consensus_manager.get_x_var_indices(y_v, v)] = y_v
+    # Define x vectors containing fixed values and variable values
+    var_indices = np.concatenate([np.arange(s.start, s.stop) for s in [consensus_manager.get_x_var_indices(x_v, v), 
+                                                                       consensus_manager.get_x_var_indices(z_v, v), 
+                                                                       consensus_manager.get_x_var_indices(y_v, v)]])
+    x_fixed = np.delete(x_global.copy(), var_indices)
+    x_var = np.concatenate([x_v, z_v, [y_v]])
+    # Split A into fixed part and variable part. Note that this is necessary simply because we can't stack fixed and variable parts of x into a single np vector.
+    A_fixed = np.delete(A, var_indices, axis=1)
+    A_var = A[:, var_indices]
     # z and mu are all fixed
-    prog.AddCost((rho/2) * (A @ x + B @ z_global - c + mu_global).T @ (A @ x + B @ z_global - c + mu_global))
+    residual = A_fixed @ x_fixed + A_var @ x_var + B @ z_global - c
+    prog.AddCost((rho/2) * (residual + mu_global).T @ (residual + mu_global))
     
     # Point Containment Constraints
     m = As[v].shape[0]
@@ -297,6 +313,8 @@ def edge_update(rho, e):
         rho: scalar penalty parameter.
         e: edge key for the edge being updated.
     """
+    global z_global
+    
     prog = MathematicalProgram()
     x_v_e = prog.NewContinuousVariables(2 * n, f'x_v_e')
     z_v_e = prog.NewContinuousVariables(2 * n, f'z_v_e')
@@ -309,15 +327,20 @@ def edge_update(rho, e):
     prog.AddCost(1e-4 * y_e)
     
     # Concensus Constraint Penalty: (rho/2) * ||Ax + Bz + mu||^2
-    # Define z vector that contain fixed values for all but the variables corresponding to e
-    z = z_global.copy()
-    z[consensus_manager.get_z_var_indices(x_v_e, e[0], e)] = x_v_e
-    z[consensus_manager.get_z_var_indices(z_v_e, e[0], e)] = z_v_e
-    z[consensus_manager.get_z_var_indices(x_w_e, e[1], e)] = x_w_e
-    z[consensus_manager.get_z_var_indices(z_w_e, e[1], e)] = z_w_e
-    z[consensus_manager.get_z_var_indices(y_e, None, e)] = y_e
+    # Define z vectors containing fixed values and variable values
+    var_indices = np.concatenate([np.arange(s.start, s.stop) for s in [consensus_manager.get_z_var_indices(x_v_e, e[0], e), 
+                                                                       consensus_manager.get_z_var_indices(z_v_e, e[0], e), 
+                                                                       consensus_manager.get_z_var_indices(x_w_e, e[1], e), 
+                                                                       consensus_manager.get_z_var_indices(z_w_e, e[1], e), 
+                                                                       consensus_manager.get_z_var_indices(y_e, None, e)]])
+    z_fixed = np.delete(z_global.copy(), var_indices)
+    z_var = np.concatenate([x_v_e, z_v_e, x_w_e, z_w_e, [y_e]])
+    # Split B into fixed part and variable part. Note that this is necessary simply because we can't stack fixed and variable parts of z into a single np vector.
+    B_fixed = np.delete(B, var_indices, axis=1)
+    B_var = B[:, var_indices]
     # x and mu are all fixed
-    prog.AddCost((rho/2) * (A @ x_global + B @ z - c + mu_global).T @ (A @ x_global + B @ z - c + mu_global))
+    residual = A @ x_global + B_fixed @ z_fixed + B_var @ z_var - c
+    prog.AddCost((rho/2) * (residual + mu_global).T @ (residual + mu_global))
     
     # Point Containment Constraints (for both points corresponding to e)
     for v in e:  # e = (v,w)
@@ -356,11 +379,11 @@ def edge_update(rho, e):
         z_w_e_sol = result.GetSolution(z_w_e)
         y_e_sol = result.GetSolution(y_e)
 
-        print(f"x_v_e_sol: NEW: {x_v_e_sol}. OLD: {x_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)]}.\n")
-        print(f"z_v_e_sol: NEW: {z_v_e_sol}. OLD: {x_global[consensus_manager.get_z_var_indices(z_v_e, e[0], e)]}.\n")
-        print(f"x_v_e_sol: NEW: {x_w_e_sol}. OLD: {x_global[consensus_manager.get_z_var_indices(x_w_e, e[1], e)]}.\n")
-        print(f"z_v_e_sol: NEW: {z_w_e_sol}. OLD: {x_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)]}.\n")
-        print(f"y_e_sol:   NEW: {y_e_sol}. OLD: {x_global[consensus_manager.get_z_var_indices(y_e, None, e)]}.\n")
+        print(f"x_v_e_sol: NEW: {x_v_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)]}.\n")
+        print(f"z_v_e_sol: NEW: {z_v_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(z_v_e, e[0], e)]}.\n")
+        print(f"x_v_e_sol: NEW: {x_w_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(x_w_e, e[1], e)]}.\n")
+        print(f"z_v_e_sol: NEW: {z_w_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)]}.\n")
+        print(f"y_e_sol:   NEW: {y_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(y_e, None, e)]}.\n")
         
         # Update global values
         z_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)] = x_v_e_sol
@@ -381,6 +404,7 @@ def dual_update():
     """
     Perform dual update ("mu-update") step.
     """
+    global mu_global
     mu_global = mu_global + (A @ x_global + B @ z_global - c)
     
     
@@ -416,10 +440,10 @@ tau_incr = 2
 tau_decr = 2
 nu = 10
 frac = 0.01  # after frac of iterations, stop updating rho
-it = 0
-MAX_IT = 100
+it = 1
+MAX_IT = 200
 
-while it < MAX_IT:
+while it <= MAX_IT:
     ##############################
     ### Vertex Updates
     ##############################
@@ -468,19 +492,21 @@ while it < MAX_IT:
     # Update rho
     if  pri_res_seq[-1] >= nu * dual_res_seq[-1] and it < frac*MAX_IT:
         rho *= tau_incr
+        mu_global /= tau_incr
     elif dual_res_seq[-1] >= nu* pri_res_seq[-1] and it < frac*MAX_IT:
         rho *= (1/tau_decr)
+        mu_global *= tau_incr
     rho_seq.append(rho)
     
     # Debug
-    if it % 10 == 0:
+    if it % 100 == 0:
         print(f"it = {it+1}/{MAX_IT}, {pri_res_seq[-1]=}, {dual_res_seq[-1]=}")
         fig, ax = plt.subplots(3)
         ax[0].loglog(rho_seq)
         ax[0].set_title("rho")
         ax[1].loglog(pri_res_seq)
         ax[1].set_title("pri_res")
-        ax[2].loglog(pri_res_seq)
+        ax[2].loglog(dual_res_seq)
         ax[2].set_title("dual_res")
         plt.show()
     
