@@ -53,16 +53,15 @@ for v in V:
 ################################################################################
 ##### Cost
 ################################################################################
-# Path length penalty
+# Path length penalty: sum_{v ∈ V} ||z_v1 - z_v2||^2
 for v in V:
     z_v1 = z_v[v][:n]
     z_v2 = z_v[v][n:]
-    diff = z_v1 - z_v2
     A = np.hstack([np.eye(z_v1.shape[0]), -np.eye(z_v2.shape[0])])
     b = np.zeros(A.shape[0])
     prog.AddL2NormCost(A, b, np.hstack([z_v1, z_v2]))
     
-# Slight penalty for activating edges (to prevent 0-length 2-cycles from happening)
+# Slight penalty for activating edges (to prevent 0-length 2-cycles from happening): sum_{e ∈ E} 1e-4 * y_e
 for e in E:
     prog.AddCost(1e-4 * y_e[e])
     
@@ -116,20 +115,18 @@ for v in V:
     prog.AddConstraint(y_v[v] == sum(y_e[e] for e in I_v_in[v]) + delta_sv)
     # y_v = sum_{e ∈ I_v_out} y_e + δ_{tv}
     prog.AddConstraint(y_v[v] == sum(y_e[e] for e in I_v_out[v]) + delta_tv)
-    # y_v ≤ 1
-    prog.AddConstraint(y_v[v] <= 1)
     
-# Flow Constraints on z_v
+# Perspective Flow Constraints
 for v in V:
     delta_sv = delta('s', v)
     delta_tv = delta('t', v)
     
     # Constraint 7: z_v = sum_{e ∈ I_v_in} z^e_v + δ_{sv} x_v = sum_{e ∈ I_v_out} z^e_v + δ_{tv} x_v
     for d in range(2*n):   # 2n because z_v is 2n-dimensional
-        # Constraints: z_v = sum_in_z_v_e + δ_{sv} x_v
-        prog.AddLinearEqualityConstraint(z_v[v][d] == sum(z_v_e[(v, e)][d] for e in I_v_in[v]) + delta_sv * x_v[v][d])
-        # Constraints: z_v = sum_out_z_v_e + δ_{tv} x_v
-        prog.AddLinearEqualityConstraint(z_v[v][d] == sum(z_v_e[(v, e)][d] for e in I_v_out[v]) + delta_tv * x_v[v][d])
+        # z_v = sum_in_z_v_e + δ_{sv} x_v
+        prog.AddConstraint(z_v[v][d] == sum(z_v_e[(v, e)][d] for e in I_v_in[v]) + delta_sv * x_v[v][d])
+        # z_v = sum_out_z_v_e + δ_{tv} x_v
+        prog.AddConstraint(z_v[v][d] == sum(z_v_e[(v, e)][d] for e in I_v_out[v]) + delta_tv * x_v[v][d])
     
 ################################################################################
 ##### Solve
