@@ -57,10 +57,11 @@ class ConsensusManager():
         first_z_var = None
         for v in V:
             for e in I_v_in[v] + I_v_out[v]:
-                if first_z_var is None:
-                    first_z_var = x_v_e[(v, e)]
                 x_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'x_{v}_e_{e}')
                 z_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'z_{v}_e_{e}')
+                
+                if first_z_var is None:
+                    first_z_var = x_v_e[(v, e)][0]
         for e in E:
             y_e[e] = self.prog.NewBinaryVariables(1, f'y_e_{e}')[0]
             
@@ -96,10 +97,12 @@ class ConsensusManager():
         for e in E:
             # Vertex-Edge consensus constraints
             v, w = e
-            # x_v = x_v_e
-            consensus_costraints.append(self.x_v_e[(v, e)] == self.x_v[v])
-            # x_w = x_w_e
-            consensus_costraints.append(self.x_v_e[(w, e)] == self.x_v[w])
+            
+            for dim in range(n):
+                # x_v = x_v_e
+                consensus_costraints.append(self.x_v_e[(v, e)][dim] == self.x_v[v][dim])
+                # x_w = x_w_e
+                consensus_costraints.append(self.x_v_e[(w, e)][dim] == self.x_v[w][dim])
             
         for v in V:
             # Flow and Perspective Flow consensus constraints
@@ -118,8 +121,8 @@ class ConsensusManager():
                 consensus_costraints.append(self.z_v[v][d] == sum(self.z_v_e[(v, e)][d] for e in I_v_out[v]) + delta_tv * self.x_v[v][d])
                 
         # Now, construct A, B, c
-        A = np.zeros((len(consensus_costraints), self.prog.num_vars()))
-        B = np.zeros((len(consensus_costraints), self.z.num_vars()))
+        A = np.zeros((len(consensus_costraints), self.z_idx))
+        B = np.zeros((len(consensus_costraints), self.prog.num_vars() - self.z_idx))
         c = np.zeros(len(consensus_costraints))
         for i, formula in enumerate(consensus_costraints):
             constraint_binding = self.prog.AddConstraint(formula)
@@ -148,48 +151,50 @@ class ConsensusManager():
                 
         return A, B, c
     
-    def get_x_var_idx(self, var_name, v):
+    def get_x_var_indices(self, vars, v):
         """
         Helper funtion for each vertex update to find the index of the given
         variable in the x variable set.
         
         Args:
-            var_name: str, name of the variable in the vertex update.
+            vars: np.ndarray, variable array for the variables whose indices in the x variable set are being searched for.
             v: vertex key for the variable/vertex update.
         """
-        if "x_v" in var_name:
+        if "x_v" in vars[0].get_name():
             var = x_v_global[v]
-        elif "z_v" in var_name:
+        elif "z_v" in vars[0].get_name():
             var = z_v_global[v]
-        elif "y_v" in var_name:
+        elif "y_v" in vars[0].get_name():
             var = y_v_global[v]
         else:
             raise ValueError("Invalid variable name.")
         
-        idx = self.prog.FindDecisionVariableIndex(var)
-        assert idx < self.z_idx  # Ensure the variable is in the x variable set
-        return idx
+        idx_first = self.prog.FindDecisionVariableIndex(var[0])
+        idx_last = self.prog.FindDecisionVariableIndex(var[-1])
+        assert idx_first < self.z_idx and idx_last < self.z_idx  # Ensure the variable is in the x variable set
+        return slice(idx_first, idx_last+1)
     
-    def get_z_var_idx(self, var_name, v, e):
+    def get_z_var_indices(self, vars, v, e):
         """
         Helper funtion for each edge update to find the index of the given
         variable in the z variable set.
         
         Args:
-            var_name: str, name of the variable in the edge update.
+            vars: np.ndarray, variable array for the variables whose indices in the x variable set are being searched for.
             v: vertex key for the variable/edge update. (Note: not applicable for y_e)
             e: edge key for the variable/edge update.
         """
-        if "x_v_e" in var_name:
+        if "x_v_e" in vars[0].get_name():
             var = x_v_e_global[(v, e)]
-        elif "z_v_e" in var_name:
+        elif "z_v_e" in vars[0].get_name():
             var = z_v_e_global[(v, e)]
-        elif "y_e" in var_name:
+        elif "y_e" in vars[0].get_name():
             var = y_e_global[e]
         
-        idx = self.prog.FindDecisionVariableIndex(var) - self.z_idx
-        assert idx >= 0  # Ensure the variable is in the z variable set
-        return idx
+        idx_first = self.prog.FindDecisionVariableIndex(var[0]) - self.z_idx
+        idx_last = self.prog.FindDecisionVariableIndex(var[-1]) - self.z_idx
+        assert idx_first >= 0 and idx_last >= 0  # Ensure the variable is in the z variable set
+        return slice(idx_first, idx_last+1)
     
     def get_num_x_vars(self):
         return self.z_idx
@@ -240,9 +245,9 @@ def vertex_update(rho, v):
     # Concensus Constraint Penalty: (rho/2) * ||Ax + Bz + mu||^2
     # Define x vector that contain fixed values for all but the variables corresponding to v
     x = x_global.copy()
-    x[consensus_manager.get_x_var_idx(x_v, v)] = x_v
-    x[consensus_manager.get_x_var_idx(z_v, v)] = z_v
-    x[consensus_manager.get_x_var_idx(y_v, v)] = y_v
+    x[consensus_manager.get_x_var_indices(x_v, v)] = x_v
+    x[consensus_manager.get_x_var_indices(z_v, v)] = z_v
+    x[consensus_manager.get_x_var_indices(y_v, v)] = y_v
     # z and mu are all fixed
     prog.AddCost((rho/2) * (A @ x + B @ z_global - c + mu_global).T @ (A @ x + B @ z_global - c + mu_global))
     
@@ -267,14 +272,14 @@ def vertex_update(rho, v):
         z_v_sol = result.GetSolution(z_v)
         y_v_sol = result.GetSolution(y_v)
 
-        print(f"x_v_sol: NEW: {x_v_sol}. OLD: {x_global[consensus_manager.get_x_var_idx(x_v, v)]}.\n")
-        print(f"z_v_sol: NEW: {z_v_sol}. OLD: {x_global[consensus_manager.get_x_var_idx(z_v, v)]}.\n")
-        print(f"y_v_sol: NEW: {y_v_sol}. OLD: {x_global[consensus_manager.get_x_var_idx(y_v, v)]}.\n")
+        print(f"x_v_sol: NEW: {x_v_sol}. OLD: {x_global[consensus_manager.get_x_var_indices(x_v, v)]}.\n")
+        print(f"z_v_sol: NEW: {z_v_sol}. OLD: {x_global[consensus_manager.get_x_var_indices(z_v, v)]}.\n")
+        print(f"y_v_sol: NEW: {y_v_sol}. OLD: {x_global[consensus_manager.get_x_var_indices(y_v, v)]}.\n")
         
         # Update global values
-        x_global[consensus_manager.get_x_var_idx(x_v, v)] = x_v_sol
-        x_global[consensus_manager.get_x_var_idx(z_v, v)] = z_v_sol
-        x_global[consensus_manager.get_x_var_idx(y_v, v)] = y_v_sol
+        x_global[consensus_manager.get_x_var_indices(x_v, v)] = x_v_sol
+        x_global[consensus_manager.get_x_var_indices(z_v, v)] = z_v_sol
+        x_global[consensus_manager.get_x_var_indices(y_v, v)] = y_v_sol
         
     else:
         print("solve failed.")
@@ -306,11 +311,11 @@ def edge_update(rho, e):
     # Concensus Constraint Penalty: (rho/2) * ||Ax + Bz + mu||^2
     # Define z vector that contain fixed values for all but the variables corresponding to e
     z = z_global.copy()
-    z[consensus_manager.get_z_var_idx(x_v_e, e[0], e)] = x_v_e
-    z[consensus_manager.get_z_var_idx(z_v_e, e[0], e)] = z_v_e
-    z[consensus_manager.get_z_var_idx(x_w_e, e[1], e)] = x_w_e
-    z[consensus_manager.get_z_var_idx(z_w_e, e[1], e)] = z_w_e
-    z[consensus_manager.get_z_var_idx(y_e, None, e)] = y_e
+    z[consensus_manager.get_z_var_indices(x_v_e, e[0], e)] = x_v_e
+    z[consensus_manager.get_z_var_indices(z_v_e, e[0], e)] = z_v_e
+    z[consensus_manager.get_z_var_indices(x_w_e, e[1], e)] = x_w_e
+    z[consensus_manager.get_z_var_indices(z_w_e, e[1], e)] = z_w_e
+    z[consensus_manager.get_z_var_indices(y_e, None, e)] = y_e
     # x and mu are all fixed
     prog.AddCost((rho/2) * (A @ x_global + B @ z - c + mu_global).T @ (A @ x_global + B @ z - c + mu_global))
     
@@ -338,8 +343,8 @@ def edge_update(rho, e):
                 prog.AddConstraint(As[v][j] @ (x_v_e_active[idx] - z_v_e_active[idx]) <= (1 - y_e) * bs[v][j])
             
     # Path Continuity Constraint: z^e_{v,2} = z^e_{w,1}
-    for d in range(n):
-        prog.AddConstraint(z_v_e[n+d] == z_w_e[d])
+    for dim in range(n):
+        prog.AddConstraint(z_v_e[n+dim] == z_w_e[dim])
             
     result = Solve(prog)
     
@@ -351,18 +356,18 @@ def edge_update(rho, e):
         z_w_e_sol = result.GetSolution(z_w_e)
         y_e_sol = result.GetSolution(y_e)
 
-        print(f"x_v_e_sol: NEW: {x_v_e_sol}. OLD: {x_global[consensus_manager.get_z_var_idx(x_v_e, e[0], e)]}.\n")
-        print(f"z_v_e_sol: NEW: {z_v_e_sol}. OLD: {x_global[consensus_manager.get_z_var_idx(z_v_e, e[0], e)]}.\n")
-        print(f"x_v_e_sol: NEW: {x_w_e_sol}. OLD: {x_global[consensus_manager.get_z_var_idx(x_w_e, e[1], e)]}.\n")
-        print(f"z_v_e_sol: NEW: {z_w_e_sol}. OLD: {x_global[consensus_manager.get_z_var_idx(z_w_e, e[1], e)]}.\n")
-        print(f"y_e_sol:   NEW: {y_e_sol}. OLD: {x_global[consensus_manager.get_z_var_idx(y_e, None, e)]}.\n")
+        print(f"x_v_e_sol: NEW: {x_v_e_sol}. OLD: {x_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)]}.\n")
+        print(f"z_v_e_sol: NEW: {z_v_e_sol}. OLD: {x_global[consensus_manager.get_z_var_indices(z_v_e, e[0], e)]}.\n")
+        print(f"x_v_e_sol: NEW: {x_w_e_sol}. OLD: {x_global[consensus_manager.get_z_var_indices(x_w_e, e[1], e)]}.\n")
+        print(f"z_v_e_sol: NEW: {z_w_e_sol}. OLD: {x_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)]}.\n")
+        print(f"y_e_sol:   NEW: {y_e_sol}. OLD: {x_global[consensus_manager.get_z_var_indices(y_e, None, e)]}.\n")
         
         # Update global values
-        z_global[consensus_manager.get_z_var_idx(x_v_e, e[0], e)] = x_v_e_sol
-        z_global[consensus_manager.get_z_var_idx(z_v_e, e[0], e)] = z_v_e_sol
-        z_global[consensus_manager.get_z_var_idx(x_w_e, e[1], e)] = x_w_e_sol
-        z_global[consensus_manager.get_z_var_idx(z_w_e, e[1], e)] = z_w_e_sol
-        z_global[consensus_manager.get_z_var_idx(y_e, None, e)] = y_e_sol
+        z_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)] = x_v_e_sol
+        z_global[consensus_manager.get_z_var_indices(z_v_e, e[0], e)] = z_v_e_sol
+        z_global[consensus_manager.get_z_var_indices(x_w_e, e[1], e)] = x_w_e_sol
+        z_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)] = z_w_e_sol
+        z_global[consensus_manager.get_z_var_indices(y_e, None, e)] = y_e_sol
         
     else:
         print("solve failed.")
