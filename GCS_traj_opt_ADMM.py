@@ -372,5 +372,123 @@ def edge_update(rho, e):
             print(f"{constraint_binding.variables()}")
 
 
-def dual_update(xe_vertex, xe_edge, mu):
-    return mu + xe_vertex - xe_edge
+def dual_update():
+    """
+    Perform dual update ("mu-update") step.
+    """
+    mu_global = mu_global + (A @ x_global + B @ z_global - c)
+    
+    
+def evaluate_primal_residual():
+    return np.linalg.norm(A @ x_global + B @ z_global - c)
+
+
+def evaluate_dual_residual(z_global_prev):
+    return rho * np.linalg.norm(A.T @ B @ (z_global - z_global_prev))
+
+
+################################################################################
+##### Main ADMM loop
+################################################################################
+
+rho = 1
+
+x_v_seq = [x_global[:2*n]]
+z_v_seq = [x_global[2*n:4*n]]
+y_v_seq = [x_global[4*n:]]
+x_v_e_seq = [z_global[:2*n]]
+z_v_e_seq = [z_global[2*n:4*n]]
+y_e_seq = [z_global[4*n:]]
+mu_seq = [mu_global]
+
+rho_seq = [rho]
+pri_res_seq = [evaluate_primal_residual()]
+dual_res_seq = [evaluate_dual_residual(z_global)]
+
+prev_z_global = z_global.copy()
+
+tau_incr = 2
+tau_decr = 2
+nu = 10
+frac = 0.01  # after frac of iterations, stop updating rho
+it = 0
+MAX_IT = 100
+
+while it < MAX_IT:
+    ##############################
+    ### Vertex Updates
+    ##############################
+    for v in V:
+        vertex_update(rho, v)
+        
+    if not np.all(np.isfinite(x_global)):
+        print("BREAKING FOR Divergence")
+        break
+        
+    # Update x history
+    x_v_seq.append(x_global[:2*n])
+    z_v_seq.append(x_global[2*n:4*n])
+    y_v_seq.append(x_global[4*n:])
+    
+    ##############################
+    ### Edge Updates
+    ##############################
+    for e in E:
+        edge_update(rho, e)
+        
+    if not np.all(np.isfinite(z_global)):
+        print("BREAKING FOR Divergence")
+        break
+        
+    # Update z history
+    x_v_e_seq.append(z_global[:2*n])
+    z_v_e_seq.append(z_global[2*n:4*n])
+    y_e_seq.append(z_global[4*n:])
+    
+    ##############################
+    ### Dual Update
+    ##############################
+    dual_update()
+    
+    # Update mu history
+    mu_seq.append(mu_global)
+    
+    
+    
+    # Compute primal and dual residuals
+    pri_res_seq.append(evaluate_primal_residual())
+    dual_res_seq.append(evaluate_dual_residual(prev_z_global))
+    prev_z_global = z_global.copy()
+    
+    # Update rho
+    if  pri_res_seq[-1] >= nu * dual_res_seq[-1] and it < frac*MAX_IT:
+        rho *= tau_incr
+    elif dual_res_seq[-1] >= nu* pri_res_seq[-1] and it < frac*MAX_IT:
+        rho *= (1/tau_decr)
+    rho_seq.append(rho)
+    
+    # Debug
+    if it % 10 == 0:
+        print(f"it = {it+1}/{MAX_IT}, {pri_res_seq[-1]=}, {dual_res_seq[-1]=}")
+        fig, ax = plt.subplots(3)
+        ax[0].loglog(rho_seq)
+        ax[0].set_title("rho")
+        ax[1].loglog(pri_res_seq)
+        ax[1].set_title("pri_res")
+        ax[2].loglog(pri_res_seq)
+        ax[2].set_title("dual_res")
+        plt.show()
+    
+    it += 1
+    
+x_v_seq = np.array(x_v_seq)
+z_v_seq = np.array(z_v_seq)
+y_v_seq = np.array(y_v_seq)
+x_v_e_seq = np.array(x_v_e_seq)
+z_v_e_seq = np.array(z_v_e_seq)
+y_e_seq = np.array(y_e_seq)
+mu_seq = np.array(mu_seq)
+
+rho_seq = np.array(rho_seq)
+pri_res_seq = np.array(pri_res_seq)
+dual_res_seq = np.array(dual_res_seq)
