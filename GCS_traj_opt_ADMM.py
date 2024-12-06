@@ -1,7 +1,6 @@
 from pydrake.all import (
     MathematicalProgram, 
-    Solve, 
-    Constraint,
+    MosekSolver,
 )
 
 import numpy as np
@@ -22,6 +21,11 @@ from test3 import As, bs, n
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
 print(f"E: {E}")
+
+# Establish solver
+mosek_solver = MosekSolver()
+if not mosek_solver.available():
+    print("WARNING: MOSEK unavailable.")
 
 # Public variable set to use to express consensus constraints and penalties
 x_v_global = {}
@@ -48,28 +52,43 @@ class ConsensusManager():
         self.prog = MathematicalProgram()
         
         # Build variable set for x variables
+        x_v_start_idx = self.prog.num_vars()
         for v in V:
             x_v[v] = self.prog.NewContinuousVariables(2 * n, f'x_{v}')
+        self.x_v_indices_in_x = slice(x_v_start_idx, self.prog.num_vars())  # Keep track of x_v indices in x variable set
+        
+        z_v_start_idx = self.prog.num_vars()
         for v in V:
             z_v[v] = self.prog.NewContinuousVariables(2 * n, f'z_{v}')
+        self.z_v_indices_in_x = slice(z_v_start_idx, self.prog.num_vars())  # Keep track of z_v indices in x variable set
+        
+        y_v_start_idx = self.prog.num_vars()
         for v in V:
             y_v[v] = self.prog.NewBinaryVariables(1, f'y_{v}')[0]
+        self.y_v_indices_in_x = slice(y_v_start_idx, self.prog.num_vars())  # Keep track of y_v indices in x variable set
         
         # Build variable set for z variables
         first_z_var = None
+        x_v_e_start_idx = 0
         for v in V:
             for e in I_v_in[v] + I_v_out[v]:
                 x_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'x_{v}_e_{e}')
                 if first_z_var is None:
                     first_z_var = x_v_e[(v, e)][0]
+                    # Make it easier to index into the z variables
+                    self.z_idx = self.prog.FindDecisionVariableIndex(first_z_var)
+        self.x_v_e_indices_in_z = slice(x_v_e_start_idx, self.prog.num_vars() - self.z_idx)  # Keep track of x_v_e indices in z variable set
+        
+        z_v_e_start_idx = self.prog.num_vars() - self.z_idx
         for v in V:
             for e in I_v_in[v] + I_v_out[v]:
                 z_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'z_{v}_e_{e}')
+        self.z_v_e_indices_in_z = slice(z_v_e_start_idx, self.prog.num_vars() - self.z_idx)  # Keep track of z_v_e indices in z variable set
+            
+        y_e_start_idx = self.prog.num_vars() - self.z_idx
         for e in E:
             y_e[e] = self.prog.NewBinaryVariables(1, f'y_e_{e}')[0]
-            
-        # Make it easier to index into the z variables
-        self.z_idx = self.prog.FindDecisionVariableIndex(first_z_var)
+        self.y_e_indices_in_z = slice(y_e_start_idx, self.prog.num_vars() - self.z_idx)  # Keep track of y_e indices in z variable set
         
         self.x_v = x_v
         self.z_v = z_v
@@ -162,6 +181,9 @@ class ConsensusManager():
         Args:
             vars: np.ndarray, variable array for the variables whose indices in the x variable set are being searched for.
             v: vertex key for the variable/vertex update.
+            
+        Returns:
+            slice: slice object representing the range of indices in the x variable set corresponding to the given variable.
         """
         if isinstance(vars, np.ndarray):
             vars = vars[0]
@@ -189,6 +211,9 @@ class ConsensusManager():
             vars: np.ndarray, variable array for the variables whose indices in the x variable set are being searched for.
             v: vertex key for the variable/edge update. (Note: not applicable for y_e)
             e: edge key for the variable/edge update.
+            
+        Returns:
+            slice: slice object representing the range of indices in the z variable set corresponding to the given variable.
         """
         if isinstance(vars, np.ndarray):
             vars = vars[0]
@@ -204,6 +229,60 @@ class ConsensusManager():
         idx_last = self.prog.FindDecisionVariableIndex(var[-1]) - self.z_idx
         assert idx_first >= 0 and idx_last >= 0  # Ensure the variable is in the z variable set
         return slice(idx_first, idx_last+1)
+    
+    def get_x_v_var_indices_in_x(self):
+        """
+        Retrieve the index slice for all the x_v variables within the x variable set.
+        
+        Returns:
+            slice: slice object representing the range of indices in the x variable set corresponding to the x_v variables.
+        """
+        return self.x_v_indices_in_x
+    
+    def get_z_v_var_indices_in_x(self):
+        """
+        Retrieve the index slice for all the z_v variables within the x variable set.
+        
+        Returns:
+            slice: slice object representing the range of indices in the x variable set corresponding to the z_v variables.
+        """
+        return self.z_v_indices_in_x
+    
+    def get_y_v_var_indices_in_x(self):
+        """
+        Retrieve the index slice for all the y_v variables within the x variable set.
+        
+        Returns:
+            slice: slice object representing the range of indices in the x variable set corresponding to the y_v variables.
+        """
+        return self.y_v_indices_in_x
+    
+    def get_x_v_e_var_indices_in_z(self):
+        """
+        Retrieve the index slice for all the x_v_e variables within the z variable set.
+        
+        Returns:
+            slice: slice object representing the range of indices in the z variable set corresponding to the x_v_e variables.
+        """
+        return self.x_v_e_indices_in_z
+    
+    def get_z_v_e_var_indices_in_z(self):
+        """
+        Retrieve the index slice for all the z_v_e variables within the z variable set.
+        
+        Returns:
+            slice: slice object representing the range of indices in the z variable set corresponding to the z_v_e variables.
+        """
+        return self.z_v_e_indices_in_z
+    
+    def get_y_e_var_indices_in_z(self):
+        """
+        Retrieve the index slice for all the y_e variables within the z variable set.
+        
+        Returns:
+            slice: slice object representing the range of indices in the z variable set corresponding to the y_e variables.
+        """
+        return self.y_e_indices_in_z
     
     def get_num_x_vars(self):
         return self.z_idx
@@ -280,7 +359,7 @@ def vertex_update(rho, v):
         for j in range(m):
             prog.AddConstraint(As[v][j] @ (x_v[idx] - z_v[idx]) <= (1 - y_v) * bs[v][j])
             
-    result = Solve(prog)
+    result = mosek_solver.Solve(prog)
     
     if result.is_success():
         # Solution retreival
@@ -369,7 +448,7 @@ def edge_update(rho, e):
     for dim in range(n):
         prog.AddConstraint(z_v_e[n+dim] == z_w_e[dim])
             
-    result = Solve(prog)
+    result = mosek_solver.Solve(prog)
     
     if result.is_success():
         # Solution retreival
@@ -422,12 +501,12 @@ def evaluate_dual_residual(z_global_prev):
 
 rho = 1
 
-x_v_seq = [x_global[:2*n]]
-z_v_seq = [x_global[2*n:4*n]]
-y_v_seq = [x_global[4*n:]]
-x_v_e_seq = [z_global[:2*n]]
-z_v_e_seq = [z_global[2*n:4*n]]
-y_e_seq = [z_global[4*n:]]
+x_v_seq = [x_global[consensus_manager.get_x_v_var_indices_in_x()]]
+z_v_seq = [x_global[consensus_manager.get_z_v_var_indices_in_x()]]
+y_v_seq = [x_global[consensus_manager.get_y_v_var_indices_in_x()]]
+x_v_e_seq = [z_global[consensus_manager.get_x_v_e_var_indices_in_z()]]
+z_v_e_seq = [z_global[consensus_manager.get_z_v_e_var_indices_in_z()]]
+y_e_seq = [z_global[consensus_manager.get_y_e_var_indices_in_z()]]
 mu_seq = [mu_global]
 
 rho_seq = [rho]
@@ -455,9 +534,9 @@ while it <= MAX_IT:
         break
         
     # Update x history
-    x_v_seq.append(x_global[:2*n])
-    z_v_seq.append(x_global[2*n:4*n])
-    y_v_seq.append(x_global[4*n:])
+    x_v_seq.append(x_global[consensus_manager.get_x_v_var_indices_in_x()])
+    z_v_seq.append(x_global[consensus_manager.get_z_v_var_indices_in_x()])
+    y_v_seq.append(x_global[consensus_manager.get_y_v_var_indices_in_x()])
     
     ##############################
     ### Edge Updates
@@ -470,9 +549,9 @@ while it <= MAX_IT:
         break
         
     # Update z history
-    x_v_e_seq.append(z_global[:2*n])
-    z_v_e_seq.append(z_global[2*n:4*n])
-    y_e_seq.append(z_global[4*n:])
+    x_v_e_seq.append(z_global[consensus_manager.get_x_v_e_var_indices_in_z()])
+    z_v_e_seq.append(z_global[consensus_manager.get_z_v_e_var_indices_in_z()])
+    y_e_seq.append(z_global[consensus_manager.get_y_e_var_indices_in_z()])
     
     ##############################
     ### Dual Update
@@ -519,6 +598,11 @@ x_v_e_seq = np.array(x_v_e_seq)
 z_v_e_seq = np.array(z_v_e_seq)
 y_e_seq = np.array(y_e_seq)
 mu_seq = np.array(mu_seq)
+
+print(f"y_v: {y_v_seq[-1]}")
+print(f"y_e: {y_e_seq[-1]}")
+
+visualize_results(As, bs, x_v_seq[-1], y_v_seq[-1])
 
 rho_seq = np.array(rho_seq)
 pri_res_seq = np.array(pri_res_seq)
