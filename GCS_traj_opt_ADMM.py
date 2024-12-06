@@ -520,7 +520,7 @@ tau_decr = 2
 nu = 10
 frac = 0.01  # after frac of iterations, stop updating rho
 it = 1
-MAX_IT = 200
+MAX_IT = 150
 
 while it <= MAX_IT:
     ##############################
@@ -578,8 +578,8 @@ while it <= MAX_IT:
     rho_seq.append(rho)
     
     # Debug
-    if it % 100 == 0:
-        print(f"it = {it+1}/{MAX_IT}, {pri_res_seq[-1]=}, {dual_res_seq[-1]=}")
+    if it % 100 == 0 or it == MAX_IT:
+        print(f"it = {it}/{MAX_IT}, {pri_res_seq[-1]=}, {dual_res_seq[-1]=}")
         fig, ax = plt.subplots(3)
         ax[0].loglog(rho_seq)
         ax[0].set_title("rho")
@@ -599,6 +599,7 @@ z_v_e_seq = np.array(z_v_e_seq)
 y_e_seq = np.array(y_e_seq)
 mu_seq = np.array(mu_seq)
 
+print(f"x_v: {x_v_seq[-1]}")
 print(f"y_v: {y_v_seq[-1]}")
 print(f"y_e: {y_e_seq[-1]}")
 
