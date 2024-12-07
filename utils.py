@@ -97,14 +97,6 @@ def delta(v1, v2):
     return 0
 
 
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
-
-import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib.patches import Polygon
-
 def visualize_results(As, bs, x_v, y_v):
     """
     Visualize 2D result of GCS piecewise-linear traj opt.

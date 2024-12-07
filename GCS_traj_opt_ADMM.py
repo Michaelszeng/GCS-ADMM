@@ -8,6 +8,7 @@ import pandas as pd
 import sys
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 np.set_printoptions(edgeitems=30, linewidth=250, precision=4, suppress=True)
 
@@ -16,7 +17,7 @@ from utils import *
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test3 import As, bs, n
+from test_autogen2 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -495,6 +496,9 @@ def evaluate_dual_residual(z_global_prev):
     return rho * np.linalg.norm(A.T @ B @ (z_global - z_global_prev))
 
 
+
+
+
 ################################################################################
 ##### Main ADMM loop
 ################################################################################
@@ -520,7 +524,7 @@ tau_decr = 2
 nu = 10
 frac = 0.01  # after frac of iterations, stop updating rho
 it = 1
-MAX_IT = 150
+MAX_IT = 300
 
 while it <= MAX_IT:
     ##############################
@@ -528,7 +532,7 @@ while it <= MAX_IT:
     ##############################
     for v in V:
         vertex_update(rho, v)
-        
+
     if not np.all(np.isfinite(x_global)):
         print("BREAKING FOR Divergence")
         break
@@ -578,7 +582,8 @@ while it <= MAX_IT:
     rho_seq.append(rho)
     
     # Debug
-    if it % 100 == 0 or it == MAX_IT:
+    # if it % 100 == 0 or it == MAX_IT:
+    if it == MAX_IT:
         print(f"it = {it}/{MAX_IT}, {pri_res_seq[-1]=}, {dual_res_seq[-1]=}")
         fig, ax = plt.subplots(3)
         ax[0].loglog(rho_seq)
@@ -599,11 +604,16 @@ z_v_e_seq = np.array(z_v_e_seq)
 y_e_seq = np.array(y_e_seq)
 mu_seq = np.array(mu_seq)
 
+# Put most recent variables into dictionaries for rounding and visualization
+x_v_sol = {v: x_v_seq[-1][2*i*n : 2*(i+1)*n] for i, v in enumerate(V)}
+y_v_sol = {v: y_v_seq[-1][i] for i, v in enumerate(V)}
+y_e_sol = {e: y_e_seq[-1][i] for i, e in enumerate(E)}
+
 print(f"x_v: {x_v_seq[-1]}")
 print(f"y_v: {y_v_seq[-1]}")
 print(f"y_e: {y_e_seq[-1]}")
 
-visualize_results(As, bs, x_v_seq[-1], y_v_seq[-1])
+visualize_results(As, bs, x_v_sol, y_v_sol)
 
 rho_seq = np.array(rho_seq)
 pri_res_seq = np.array(pri_res_seq)

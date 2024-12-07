@@ -12,12 +12,13 @@ import time
 
 np.set_printoptions(edgeitems=30, linewidth=250, precision=4, suppress=True)
 
+from GCS_utils import *
 from utils import *
 
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test3 import As, bs, n
+from test_autogen2 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -29,6 +30,7 @@ prog = MathematicalProgram()
 ##### Variable Definitions
 ################################################################################
 SOLVE_CONVEX_RELAXATION = True
+# SOLVE_CONVEX_RELAXATION = False
 
 x_v = {}
 z_v = {}
@@ -112,7 +114,7 @@ for v in V:
 for e in E:
     v, w = e
     # Constraint 5: z_{v,2}^e = z_{w,1}^e for each edge e = (v, w)
-    for d in range(n):  # n because w only check equivalence of one point in each z_v_e (which represents two points)
+    for d in range(n):  # n because we only check equivalence of one point in each z_v_e (which represents two points)
         prog.AddConstraint(z_v_e[(v, e)][n+d] == z_v_e[(w, e)][d])
     
 # Flow Constraints
@@ -186,6 +188,9 @@ if result.is_success():
     print(f"{x_v_sol=}\n")
     print(f"{y_v_sol=}\n")
     print(f"{y_e_sol=}\n")
+    
+    if SOLVE_CONVEX_RELAXATION:
+        final_cost, x_v_sol, y_v_sol = rounding(y_e_sol, V, E, I_v_out)
     
     visualize_results(As, bs, x_v_sol, y_v_sol)
     
