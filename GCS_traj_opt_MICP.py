@@ -17,7 +17,7 @@ from utils import *
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test_autogen2 import As, bs, n
+from test3 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -28,6 +28,8 @@ prog = MathematicalProgram()
 ################################################################################
 ##### Variable Definitions
 ################################################################################
+SOLVE_CONVEX_RELAXATION = True
+
 x_v = {}
 z_v = {}
 y_v = {}
@@ -38,11 +40,19 @@ z_v_e = {}
 for v in V:
     x_v[v] = prog.NewContinuousVariables(2 * n, f'x_{v}')
     z_v[v] = prog.NewContinuousVariables(2 * n, f'z_{v}')
-    y_v[v] = prog.NewBinaryVariables(1, f'y_{v}')[0]
+    if SOLVE_CONVEX_RELAXATION:  # Relax Binary variable to 0 <= y_v <= 1
+        y_v[v] = prog.NewContinuousVariables(1, f'y_{v}')[0]
+        prog.AddBoundingBoxConstraint(0, 1, y_v[v])
+    else:
+        y_v[v] = prog.NewBinaryVariables(1, f'y_{v}')[0]
 
 # Variables for each edge e ∈ E
 for e in E:
-    y_e[e] = prog.NewBinaryVariables(1, f'y_e_{e}')[0]
+    if SOLVE_CONVEX_RELAXATION:  # Relax Binary variable to 0 <= y_e <= 1
+        y_e[e] = prog.NewContinuousVariables(1, f'y_e_{e}')[0]
+        prog.AddBoundingBoxConstraint(0, 1, y_e[e])
+    else:
+        y_e[e] = prog.NewBinaryVariables(1, f'y_e_{e}')[0]
 
 # Variables z^e_v for each vertex v ∈ V and each incident edge e ∈ I_v
 for v in V:

@@ -42,8 +42,8 @@ def build_graph(As, bs):
         dict: where I_v_in[v] is a list of edges incident to vertex v.
         dict: where I_v_out[v] is a list of edges incident to vertex v.
     """
-    vertices = set(As.keys())  # vertex set
-    edges = set()
+    vertices = list(As.keys())  # vertex set
+    edges = list()
 
     def check_overlap(A1, b1, A2, b2):
         """
@@ -68,7 +68,7 @@ def build_graph(As, bs):
         for v2 in vertices:
             if v1 != v2:
                 if check_overlap(As[v1], bs[v1], As[v2], bs[v2]):
-                    edges.add((v1, v2))
+                    edges.append((v1, v2))
     
     # Build incidence lists
     I_v_in = {v: [] for v in vertices}

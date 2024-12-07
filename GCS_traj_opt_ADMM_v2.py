@@ -1,6 +1,7 @@
 from pydrake.all import (
     MathematicalProgram, 
     MosekSolver,
+    Variable,
 )
 
 import numpy as np
@@ -43,27 +44,27 @@ class ConsensusManager():
         """
         self.prog = MathematicalProgram()
         
-        x_v = {}
-        z_v = {}
-        y_v = {}
-        x_v_e = {}
-        z_v_e = {}
-        y_e = {}
+        self.x_v_sym = {}
+        self.z_v_sym = {}
+        self.y_v_sym = {}
+        self.x_v_e_sym = {}
+        self.z_v_e_sym = {}
+        self.y_e_sym = {}
         
         # Build variable set for x variables
         x_v_start_idx = self.prog.num_vars()
         for v in V:
-            x_v[v] = self.prog.NewContinuousVariables(2 * n, f'x_{v}')
+            self.x_v_sym[v] = self.prog.NewContinuousVariables(2 * n, f'x_{v}')
         self.x_v_indices_in_x = slice(x_v_start_idx, self.prog.num_vars())  # Keep track of x_v indices in x variable set
         
         z_v_start_idx = self.prog.num_vars()
         for v in V:
-            z_v[v] = self.prog.NewContinuousVariables(2 * n, f'z_{v}')
+            self.z_v_sym[v] = self.prog.NewContinuousVariables(2 * n, f'z_{v}')
         self.z_v_indices_in_x = slice(z_v_start_idx, self.prog.num_vars())  # Keep track of z_v indices in x variable set
         
         y_v_start_idx = self.prog.num_vars()
         for v in V:
-            y_v[v] = self.prog.NewBinaryVariables(1, f'y_{v}')[0]
+            self.y_v_sym[v] = self.prog.NewBinaryVariables(1, f'y_{v}')
         self.y_v_indices_in_x = slice(y_v_start_idx, self.prog.num_vars())  # Keep track of y_v indices in x variable set
         
         # Build variable set for z variables
@@ -71,9 +72,9 @@ class ConsensusManager():
         x_v_e_start_idx = 0
         for v in V:
             for e in I_v_in[v] + I_v_out[v]:
-                x_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'x_{v}_e_{e}')
+                self.x_v_e_sym[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'x_{v}_e_{e}')
                 if first_z_var is None:
-                    first_z_var = x_v_e[(v, e)][0]
+                    first_z_var = self.x_v_e_sym[(v, e)][0]
                     # Make it easier to index into the z variables
                     self.z_idx = self.prog.FindDecisionVariableIndex(first_z_var)
         self.x_v_e_indices_in_z = slice(x_v_e_start_idx, self.prog.num_vars() - self.z_idx)  # Keep track of x_v_e indices in z variable set
@@ -81,20 +82,13 @@ class ConsensusManager():
         z_v_e_start_idx = self.prog.num_vars() - self.z_idx
         for v in V:
             for e in I_v_in[v] + I_v_out[v]:
-                z_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'z_{v}_e_{e}')
+                self.z_v_e_sym[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'z_{v}_e_{e}')
         self.z_v_e_indices_in_z = slice(z_v_e_start_idx, self.prog.num_vars() - self.z_idx)  # Keep track of z_v_e indices in z variable set
             
         y_e_start_idx = self.prog.num_vars() - self.z_idx
         for e in E:
-            y_e[e] = self.prog.NewBinaryVariables(1, f'y_e_{e}')[0]
+            self.y_e_sym[e] = self.prog.NewBinaryVariables(1, f'y_e_{e}')
         self.y_e_indices_in_z = slice(y_e_start_idx, self.prog.num_vars() - self.z_idx)  # Keep track of y_e indices in z variable set
-        
-        self.x_v = x_v
-        self.z_v = z_v
-        self.y_v = y_v
-        self.x_v_e = x_v_e
-        self.z_v_e = z_v_e
-        self.y_e = y_e
         
         self.A = None
         self.B = None
@@ -121,9 +115,9 @@ class ConsensusManager():
             
             for dim in range(n):
                 # x_v = x_v_e
-                consensus_costraints.append(self.x_v_e[(v, e)][dim] == self.x_v[v][dim])
+                consensus_costraints.append(self.x_v_e_sym[(v, e)][dim] == self.x_v_sym[v][dim])
                 # x_w = x_w_e
-                consensus_costraints.append(self.x_v_e[(w, e)][dim] == self.x_v[w][dim])
+                consensus_costraints.append(self.x_v_e_sym[(w, e)][dim] == self.x_v_sym[w][dim])
             
         for v in V:
             # Flow and Perspective Flow consensus constraints
@@ -131,15 +125,15 @@ class ConsensusManager():
             delta_tv = delta('t', v)
 
             # y_v = sum_{e ∈ I_v_in} y_e + δ_{sv}
-            consensus_costraints.append(self.y_v[v] == sum(self.y_e[e] for e in I_v_in[v]) + delta_sv)
+            consensus_costraints.append(self.y_v_sym[v].item() == sum(self.y_e_sym[e].item() for e in I_v_in[v]) + delta_sv)
             # y_v = sum_{e ∈ I_v_out} y_e + δ_{tv}
-            consensus_costraints.append(self.y_v[v] == sum(self.y_e[e] for e in I_v_out[v]) + delta_tv)
+            consensus_costraints.append(self.y_v_sym[v].item() == sum(self.y_e_sym[e].item() for e in I_v_out[v]) + delta_tv)
             
             for d in range(2*n):   # 2n because z_v is 2n-dimensional
                 # z_v = sum_in_z_v_e + δ_{sv} x_v
-                consensus_costraints.append(self.z_v[v][d] == sum(self.z_v_e[(v, e)][d] for e in I_v_in[v]) + delta_sv * self.x_v[v][d])
+                consensus_costraints.append(self.z_v_sym[v][d] == sum(self.z_v_e_sym[(v, e)][d] for e in I_v_in[v]) + delta_sv * self.x_v_sym[v][d])
                 # z_v = sum_out_z_v_e + δ_{tv} x_v
-                consensus_costraints.append(self.z_v[v][d] == sum(self.z_v_e[(v, e)][d] for e in I_v_out[v]) + delta_tv * self.x_v[v][d])
+                consensus_costraints.append(self.z_v_sym[v][d] == sum(self.z_v_e_sym[(v, e)][d] for e in I_v_out[v]) + delta_tv * self.x_v_sym[v][d])
                 
         # Now, construct A, B, c
         A = np.zeros((len(consensus_costraints), self.z_idx))
@@ -188,11 +182,11 @@ class ConsensusManager():
             vars = vars[0]
         
         if "x_v" in vars.get_name():
-            var = self.x_v[v]
+            var = self.x_v_sym[v]
         elif "z_v" in vars.get_name():
-            var = self.z_v[v]
+            var = self.z_v_sym[v]
         elif "y_v" in vars.get_name():
-            var = [self.y_v[v]]
+            var = self.y_v_sym[v]
         else:
             raise ValueError("Invalid variable name.")
         
@@ -218,11 +212,11 @@ class ConsensusManager():
             vars = vars[0]
         
         if "x_v_e" in vars.get_name() or "x_w_e" in vars.get_name():
-            var = self.x_v_e[(v, e)]
+            var = self.x_v_e_sym[(v, e)]
         elif "z_v_e" in vars.get_name() or "z_w_e" in vars.get_name():
-            var = self.z_v_e[(v, e)]
+            var = self.z_v_e_sym[(v, e)]
         elif "y_e" in vars.get_name():
-            var = [self.y_e[e]]
+            var = self.y_e_sym[e]
         
         idx_first = self.prog.FindDecisionVariableIndex(var[0]) - self.z_idx
         idx_last = self.prog.FindDecisionVariableIndex(var[-1]) - self.z_idx
@@ -300,11 +294,12 @@ consensus_manager = ConsensusManager()
 A, B, c = consensus_manager.build_A_B_c_consensus_matrices()  # Just build these once; they remain constant throughout optimization
 
 # Variables to store current global values of split x and z variables
-# Consists of x_v, z_v, y_v
-x_global = np.zeros(consensus_manager.get_num_x_vars())
-# Consists of x_v_e, z_v_e, y_e
-z_global = np.zeros(consensus_manager.get_num_z_vars())
-
+x_v_global = {v: np.zeros(2 * n) for v in V}
+z_v_global = {v: np.zeros(2 * n) for v in V}
+y_v_global = {v: 0 for v in V}
+x_v_e_global = {(v, e): np.zeros(2 * n) for v in V for e in (I_v_in[v] + I_v_out[v])}
+z_v_e_global = {(v, e): np.zeros(2 * n) for v in V for e in (I_v_in[v] + I_v_out[v])}
+y_e_global = {e: 0 for e in E}
 mu_global = np.zeros(consensus_manager.get_num_mu_vars())
 
 
@@ -316,14 +311,68 @@ def vertex_update(rho, v):
         rho: scalar penalty parameter.
         v: vertex key for the vertex being updated.
     """
-    global x_global
-    
+    def build_environment():
+        """
+        Helper function to build the environment dictionary mapping symbolic variables
+        to their corresponding global values for partial evaluation in each vertex update.
+        
+        Returns:
+            dict: environment dictionary for partial evaluation.
+            np.ndarray: x_sym array of symbolic variables.
+            np.ndarray: z_sym array of symbolic variables.
+        """
+        environment = {}
+
+        # Create arrays of symbolic variables, including the variables specific to the prog in the calling vertex update
+        x_sym = np.array([
+            x_v[i] if v_ == v else Variable(f"x_{v_}_{i}")
+            for v_ in V for i in range(2 * n)
+        ] + [
+            z_v[i] if v_ == v else Variable(f"z_{v_}_{i}")
+            for v_ in V for i in range(2 * n)
+        ] + [
+            y_v[0] if v_ == v else Variable(f"y_{v_}")
+            for v_ in V
+        ])
+        z_sym = np.array(
+            [Variable(f"x_{v_}_e_{e}_{i}") for i in range(2 * n) for v_ in V for e in (I_v_in[v_] + I_v_out[v_])] +
+            [Variable(f"z_{v_}_e_{e}_{i}") for i in range(2 * n) for v_ in V for e in (I_v_in[v_] + I_v_out[v_])] +
+            [Variable(f"y_{e}") for e in E]
+        )
+        
+        # Also create a version of x_sym that excludes the variables corresponding to the vertex `var` to create the environment
+        x_sym_env = np.array([
+            Variable(f"x_{v_}_{i}") for v_ in V for i in range(2 * n) if v_ != v
+        ] + [
+            Variable(f"z_{v_}_{i}") for v_ in V for i in range(2 * n) if v_ != v
+        ] + [
+            Variable(f"y_{v_}") for v_ in V if v_ != v
+        ])
+        
+        # Create arrays of variable values
+        # Exclude values corresponding to the vertex `var`
+        x_values = np.array(
+            [val for v_ in V for val in x_v_global[v_] if v_ != V] +
+            [val for v_ in V for val in z_v_global[v_] if v_ != v] +
+            [y_v_global[v_] for v_ in V if v_ != v]
+        )
+        z_values = np.array(
+            [val for v_ in V for e in (I_v_in[v_] + I_v_out[v_]) for val in x_v_e_global[(v_, e)]] +
+            [val for v_ in V for e in (I_v_in[v_] + I_v_out[v_]) for val in z_v_e_global[(v_, e)]] +
+            [y_e_global[e] for e in E]
+        )
+        
+        environment.update(dict(zip(x_sym_env, x_values)))
+        environment.update(dict(zip(z_sym, z_values)))
+        
+        return environment, x_sym, z_sym
+
     prog = MathematicalProgram()
     x_v = prog.NewContinuousVariables(2 * n, f'x_v')
     z_v = prog.NewContinuousVariables(2 * n, f'z_v')
-    y_v = prog.NewContinuousVariables(1, f'y_v')[0]  # Relax y_v to 0 <= y_v <= 1
+    y_v = prog.NewContinuousVariables(1, f'y_v')  # Relax y_v to 0 <= y_v <= 1
     prog.AddBoundingBoxConstraint(0, 1, y_v)
-    
+
     # Path Length Penalty: ||z_v1 - z_v2||^2
     z_v1 = z_v[:n]
     z_v2 = z_v[n:]
@@ -331,19 +380,18 @@ def vertex_update(rho, v):
     b_path_len_penalty = np.zeros(A_path_len_penalty.shape[0])
     prog.AddL2NormCost(A_path_len_penalty, b_path_len_penalty, np.hstack([z_v1, z_v2]))
     
-    # Concensus Constraint Penalty: (rho/2) * ||Ax + Bz + mu||^2
-    # Define x vectors containing fixed values and variable values
-    var_indices = np.concatenate([np.arange(s.start, s.stop) for s in [consensus_manager.get_x_var_indices(x_v, v), 
-                                                                       consensus_manager.get_x_var_indices(z_v, v), 
-                                                                       consensus_manager.get_x_var_indices(y_v, v)]])
-    x_fixed = np.delete(x_global.copy(), var_indices)
-    x_var = np.concatenate([x_v, z_v, [y_v]])
-    # Split A into fixed part and variable part. Note that this is necessary simply because we can't stack fixed and variable parts of x into a single np vector.
-    A_fixed = np.delete(A, var_indices, axis=1)
-    A_var = A[:, var_indices]
-    # z and mu are all fixed
-    residual = A_fixed @ x_fixed + A_var @ x_var + B @ z_global - c
-    prog.AddCost((rho/2) * (residual + mu_global).T @ (residual + mu_global))
+    # Vertex Activation Penalty: 1e-4 * y_v
+    prog.AddCost(1e-4 * y_v.item())
+    
+    # Concensus Constraint Penalty: (rho/2) * ||Ax + Bz - c + mu||^2    
+    env, x_sym, z_sym = build_environment()
+    print(env)
+    cost = ((rho/2) * (A @ x_sym + B @ z_sym - c + mu_global).T @ (A @ x_sym + B @ z_sym - c + mu_global))
+    print(cost)
+    print()
+    cost = cost.EvaluatePartial(env)
+    print(cost)
+    prog.AddCost(cost)
     
     # Point Containment Constraints
     m = As[v].shape[0]
@@ -352,11 +400,11 @@ def vertex_update(rho, v):
 
         # Constraint 1: A_v z_{v,i} ≤ y_v b_v
         for j in range(m):
-            prog.AddConstraint(As[v][j] @ z_v[idx] <= y_v * bs[v][j])
+            prog.AddConstraint(As[v][j] @ z_v[idx] <= y_v.item() * bs[v][j])
             
         # Constraint 2: A_v (x_{v,i} - z_{v,i}) ≤ (1 - y_v) b_v
         for j in range(m):
-            prog.AddConstraint(As[v][j] @ (x_v[idx] - z_v[idx]) <= (1 - y_v) * bs[v][j])
+            prog.AddConstraint(As[v][j] @ (x_v[idx] - z_v[idx]) <= (1 - y_v.item()) * bs[v][j])
             
     result = mosek_solver.Solve(prog)
     
@@ -366,14 +414,14 @@ def vertex_update(rho, v):
         z_v_sol = result.GetSolution(z_v)
         y_v_sol = result.GetSolution(y_v)
 
-        print(f"x_v_sol: NEW: {x_v_sol}. OLD: {x_global[consensus_manager.get_x_var_indices(x_v, v)]}.\n")
-        print(f"z_v_sol: NEW: {z_v_sol}. OLD: {x_global[consensus_manager.get_x_var_indices(z_v, v)]}.\n")
-        print(f"y_v_sol: NEW: {y_v_sol}. OLD: {x_global[consensus_manager.get_x_var_indices(y_v, v)]}.\n")
+        print(f"x_v_sol: NEW: {x_v_sol}. OLD: {x_v_global[v]}.\n")
+        print(f"z_v_sol: NEW: {z_v_sol}. OLD: {z_v_global[v]}.\n")
+        print(f"y_v_sol: NEW: {y_v_sol}. OLD: {y_v_global[v]}.\n")
         
         # Update global values
-        x_global[consensus_manager.get_x_var_indices(x_v, v)] = x_v_sol
-        x_global[consensus_manager.get_x_var_indices(z_v, v)] = z_v_sol
-        x_global[consensus_manager.get_x_var_indices(y_v, v)] = y_v_sol
+        x_v_global[v] = x_v_sol
+        z_v_global[v] = z_v_sol
+        y_v_global[v] = y_v_sol
         
     else:
         print("solve failed.")
@@ -391,34 +439,69 @@ def edge_update(rho, e):
         rho: scalar penalty parameter.
         e: edge key for the edge being updated.
     """
-    global z_global
+    def build_environment():
+        """
+        Helper function to build the environment dictionary mapping symbolic variables
+        to their corresponding global values for partial evaluation in each edge update.
+        
+        Returns:
+            dict: environment dictionary for partial evaluation.
+            np.ndarray: x_sym array of symbolic variables.
+            np.ndarray: z_sym array of symbolic variables.
+        """
+        environment = {}    
+        # Create arrays of symbolic variables, including the variables specific to the prog in the calling edge update
+        x_sym = np.array([Variable(f"x_{v}_{i}") for i in range(2*n) for v in V] + 
+                         [Variable(f"z_{v}_{i}") for i in range(2*n) for v in V] +
+                         [Variable(f"y_{v}") for v in V])
+        z_sym = np.array([
+            # Use x_v_e, z_v_e, x_w_e, z_w_e, or y_e based on conditions
+            x_v_e[i] if e_ == e and v == e[0] else
+            x_w_e[i] if e_ == e and v == e[1] else
+            Variable(f"x_{v}_e_{e_}_{i}")
+            for i in range(2 * n) for v in V for e_ in (I_v_in[v] + I_v_out[v])
+        ] + [
+            z_v_e[i] if e_ == e and v == e[0] else
+            z_w_e[i] if e_ == e and v == e[1] else
+            Variable(f"z_{v}_e_{e_}_{i}")
+            for i in range(2 * n) for v in V for e_ in (I_v_in[v] + I_v_out[v])
+        ] + [
+            y_e[0] if e_ == e else Variable(f"y_{e_}")
+            for e_ in E
+        ])
+        
+        # Create arrays of variable values
+        # Exclude values corresponding to the edge `var`
+        x_values = np.array(
+            [val for v in V for val in x_v_global[v]] +
+            [val for v in V for val in z_v_global[v]] +
+            [y_v_global[v] for v in V]
+        )
+        z_values = np.array(
+            [val for v in V for e_ in (I_v_in[v] + I_v_out[v]) for val in x_v_e_global[(v, e_)] if e_ != e] +
+            [val for v in V for e_ in (I_v_in[v] + I_v_out[v]) for val in z_v_e_global[(v, e_)] if e_ != e] +
+            [y_e_global[e_] for e_ in E if e_ != e]
+        )
+
+        environment.update(dict(zip(x_sym, x_values)))
+        environment.update(dict(zip(z_sym, z_values)))
+        
+        return environment 
     
     prog = MathematicalProgram()
     x_v_e = prog.NewContinuousVariables(2 * n, f'x_v_e')
     z_v_e = prog.NewContinuousVariables(2 * n, f'z_v_e')
     x_w_e = prog.NewContinuousVariables(2 * n, f'x_w_e')
     z_w_e = prog.NewContinuousVariables(2 * n, f'z_w_e')
-    y_e = prog.NewContinuousVariables(1, f'y_e')[0]  # Relax y_e to 0 <= y_e <= 1
+    y_e = prog.NewContinuousVariables(1, f'y_e')  # Relax y_e to 0 <= y_e <= 1
     prog.AddBoundingBoxConstraint(0, 1, y_e)
     
     # Edge Activation Penalty: 1e-4 * y_e
-    prog.AddCost(1e-4 * y_e)
+    prog.AddCost(1e-4 * y_e.item())
     
-    # Concensus Constraint Penalty: (rho/2) * ||Ax + Bz + mu||^2
-    # Define z vectors containing fixed values and variable values
-    var_indices = np.concatenate([np.arange(s.start, s.stop) for s in [consensus_manager.get_z_var_indices(x_v_e, e[0], e), 
-                                                                       consensus_manager.get_z_var_indices(z_v_e, e[0], e), 
-                                                                       consensus_manager.get_z_var_indices(x_w_e, e[1], e), 
-                                                                       consensus_manager.get_z_var_indices(z_w_e, e[1], e), 
-                                                                       consensus_manager.get_z_var_indices(y_e, None, e)]])
-    z_fixed = np.delete(z_global.copy(), var_indices)
-    z_var = np.concatenate([x_v_e, z_v_e, x_w_e, z_w_e, [y_e]])
-    # Split B into fixed part and variable part. Note that this is necessary simply because we can't stack fixed and variable parts of z into a single np vector.
-    B_fixed = np.delete(B, var_indices, axis=1)
-    B_var = B[:, var_indices]
-    # x and mu are all fixed
-    residual = A @ x_global + B_fixed @ z_fixed + B_var @ z_var - c
-    prog.AddCost((rho/2) * (residual + mu_global).T @ (residual + mu_global))
+    # Concensus Constraint Penalty: (rho/2) * ||Ax + Bz - c + mu||^2
+    env, x_sym, z_sym = build_environment()
+    prog.AddCost(((rho/2) * (A @ x_sym + B @ z_sym - c + mu_global).T @ (A @ x_sym + B @ z_sym - c + mu_global)).EvaluatePartial(env))
     
     # Point Containment Constraints (for both points corresponding to e)
     for v in e:  # e = (v,w)
@@ -437,11 +520,11 @@ def edge_update(rho, e):
             
             # Constraint 1: A_v z^e_{v,i} ≤ y_e b_v
             for j in range(m):
-                prog.AddConstraint(As[v][j] @ z_v_e_active[idx] <= y_e * bs[v][j])
+                prog.AddConstraint(As[v][j] @ z_v_e_active[idx] <= y_e.item() * bs[v][j])
                 
             # Constraint 2: A_v (x^e_{v,i} - z^e_{v,i}) ≤ (1 - y_e) b_v
             for j in range(m):
-                prog.AddConstraint(As[v][j] @ (x_v_e_active[idx] - z_v_e_active[idx]) <= (1 - y_e) * bs[v][j])
+                prog.AddConstraint(As[v][j] @ (x_v_e_active[idx] - z_v_e_active[idx]) <= (1 - y_e.item()) * bs[v][j])
             
     # Path Continuity Constraint: z^e_{v,2} = z^e_{w,1}
     for dim in range(n):
@@ -457,18 +540,18 @@ def edge_update(rho, e):
         z_w_e_sol = result.GetSolution(z_w_e)
         y_e_sol = result.GetSolution(y_e)
 
-        print(f"x_v_e_sol: NEW: {x_v_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)]}.\n")
-        print(f"z_v_e_sol: NEW: {z_v_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(z_v_e, e[0], e)]}.\n")
-        print(f"x_v_e_sol: NEW: {x_w_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(x_w_e, e[1], e)]}.\n")
-        print(f"z_v_e_sol: NEW: {z_w_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)]}.\n")
-        print(f"y_e_sol:   NEW: {y_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(y_e, None, e)]}.\n")
+        print(f"x_v_e_sol: NEW: {x_v_e_sol}. OLD: {x_v_e_global[(e[0], e)]}.\n")
+        print(f"z_v_e_sol: NEW: {z_v_e_sol}. OLD: {z_v_e_global[(e[0], e)]}.\n")
+        print(f"x_v_e_sol: NEW: {x_w_e_sol}. OLD: {x_v_e_global[(e[1], e)]}.\n")
+        print(f"z_v_e_sol: NEW: {z_w_e_sol}. OLD: {z_v_e_global[(e[1], e)]}.\n")
+        print(f"y_e_sol:   NEW: {y_e_sol}. OLD: {y_e_global[e]}.\n")
         
         # Update global values
-        z_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)] = x_v_e_sol
-        z_global[consensus_manager.get_z_var_indices(z_v_e, e[0], e)] = z_v_e_sol
-        z_global[consensus_manager.get_z_var_indices(x_w_e, e[1], e)] = x_w_e_sol
-        z_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)] = z_w_e_sol
-        z_global[consensus_manager.get_z_var_indices(y_e, None, e)] = y_e_sol
+        x_v_e_global[(e[0], e)] = x_v_e_sol
+        z_v_e_global[(e[0], e)] = z_v_e_sol
+        x_v_e_global[(e[1], e)] = x_w_e_sol
+        z_v_e_global[(e[1], e)] = z_w_e_sol
+        y_e_global[e] = y_e_sol
         
     else:
         print("solve failed.")
@@ -478,20 +561,47 @@ def edge_update(rho, e):
             print(f"{constraint_binding.variables()}")
 
 
+def build_full_x_z_vectors():
+    """
+    Helper function to collect all x and z values from the global dictionaries
+    into single arrays.
+    
+    Returns:
+        np.ndarray: array of current x variable values.
+        np.ndarray: array of current z variable values.
+    """  
+    x_values = np.array(
+        [val for v_ in V for val in x_v_global[v_]] +
+        [val for v_ in V for val in z_v_global[v_]] +
+        [y_v_global[v_] for v_ in V]
+    )
+    z_values = np.array(
+        [val for v_ in V for e in (I_v_in[v_] + I_v_out[v_]) for val in x_v_e_global[(v_, e)]] +
+        [val for v_ in V for e in (I_v_in[v_] + I_v_out[v_]) for val in z_v_e_global[(v_, e)]] +
+        [y_e_global[e] for e in E]
+    )
+    return x_values, z_values
+    
+
 def dual_update():
     """
     Perform dual update ("mu-update") step.
     """
     global mu_global
-    mu_global = mu_global + (A @ x_global + B @ z_global - c)
+    x, z = build_full_x_z_vectors()
+    mu_global = mu_global + (A @ x + B @ z - c)
     
     
 def evaluate_primal_residual():
-    return np.linalg.norm(A @ x_global + B @ z_global - c)
+    x, z = build_full_x_z_vectors()
+    return np.linalg.norm(A @ x + B @ z - c)
 
 
-def evaluate_dual_residual(z_global_prev):
-    return rho * np.linalg.norm(A.T @ B @ (z_global - z_global_prev))
+def evaluate_dual_residual(z_prev):
+    x, z = build_full_x_z_vectors()
+    if z_prev is None:
+        z_prev = z
+    return rho * np.linalg.norm(A.T @ B @ (z - z_prev)), z
 
 
 ################################################################################
@@ -500,19 +610,19 @@ def evaluate_dual_residual(z_global_prev):
 
 rho = 1
 
-x_v_seq = [x_global[consensus_manager.get_x_v_var_indices_in_x()]]
-z_v_seq = [x_global[consensus_manager.get_z_v_var_indices_in_x()]]
-y_v_seq = [x_global[consensus_manager.get_y_v_var_indices_in_x()]]
-x_v_e_seq = [z_global[consensus_manager.get_x_v_e_var_indices_in_z()]]
-z_v_e_seq = [z_global[consensus_manager.get_z_v_e_var_indices_in_z()]]
-y_e_seq = [z_global[consensus_manager.get_y_e_var_indices_in_z()]]
+x_v_seq = [x_v_global]
+z_v_seq = [z_v_global]
+y_v_seq = [y_v_global]
+x_v_e_seq = [x_v_e_global]
+z_v_e_seq = [z_v_e_global]
+y_e_seq = [y_e_global]
 mu_seq = [mu_global]
 
 rho_seq = [rho]
 pri_res_seq = [evaluate_primal_residual()]
-dual_res_seq = [evaluate_dual_residual(z_global)]
+dual_res_seq = [evaluate_dual_residual(None)]
 
-prev_z_global = z_global.copy()
+_, prev_z = build_full_x_z_vectors()
 
 tau_incr = 2
 tau_decr = 2
@@ -528,14 +638,10 @@ while it <= MAX_IT:
     for v in V:
         vertex_update(rho, v)
         
-    if not np.all(np.isfinite(x_global)):
-        print("BREAKING FOR Divergence")
-        break
-        
     # Update x history
-    x_v_seq.append(x_global[consensus_manager.get_x_v_var_indices_in_x()])
-    z_v_seq.append(x_global[consensus_manager.get_z_v_var_indices_in_x()])
-    y_v_seq.append(x_global[consensus_manager.get_y_v_var_indices_in_x()])
+    x_v_seq.append(x_v_global)
+    z_v_seq.append(z_v_global)
+    y_v_seq.append(y_v_global)
     
     ##############################
     ### Edge Updates
@@ -543,14 +649,10 @@ while it <= MAX_IT:
     for e in E:
         edge_update(rho, e)
         
-    if not np.all(np.isfinite(z_global)):
-        print("BREAKING FOR Divergence")
-        break
-        
     # Update z history
-    x_v_e_seq.append(z_global[consensus_manager.get_x_v_e_var_indices_in_z()])
-    z_v_e_seq.append(z_global[consensus_manager.get_z_v_e_var_indices_in_z()])
-    y_e_seq.append(z_global[consensus_manager.get_y_e_var_indices_in_z()])
+    x_v_e_seq.append(x_v_e_global)
+    z_v_e_seq.append(z_v_e_global)
+    y_e_seq.append(y_e_global)
     
     ##############################
     ### Dual Update
@@ -564,8 +666,8 @@ while it <= MAX_IT:
     
     # Compute primal and dual residuals
     pri_res_seq.append(evaluate_primal_residual())
-    dual_res_seq.append(evaluate_dual_residual(prev_z_global))
-    prev_z_global = z_global.copy()
+    new_dual_res, prev_z = evaluate_dual_residual(prev_z)
+    dual_res_seq.append(new_dual_res)
     
     # Update rho
     if  pri_res_seq[-1] >= nu * dual_res_seq[-1] and it < frac*MAX_IT:
@@ -602,7 +704,7 @@ print(f"x_v: {x_v_seq[-1]}")
 print(f"y_v: {y_v_seq[-1]}")
 print(f"y_e: {y_e_seq[-1]}")
 
-visualize_results(As, bs, x_v_seq[-1], y_v_seq[-1])
+# visualize_results(As, bs, x_v_seq[-1], y_v_seq[-1])
 
 rho_seq = np.array(rho_seq)
 pri_res_seq = np.array(pri_res_seq)
