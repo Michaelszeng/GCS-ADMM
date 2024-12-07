@@ -1,11 +1,9 @@
 from pydrake.all import (
     MathematicalProgram, 
     Solve, 
-    Constraint,
 )
 
 import numpy as np
-import pandas as pd
 import sys
 import os
 import time
@@ -184,13 +182,20 @@ if result.is_success():
         for e in I_v_in[v] + I_v_out[v]:
             z_v_e_sol[(v, e)] = result.GetSolution(z_v_e[(v, e)])
     
-    print(f"Optimal Cost: {result.get_optimal_cost()}\n")
+    print(f"Optimal Cost (Path Length): {result.get_optimal_cost()}\n")
     print(f"{x_v_sol=}\n")
     print(f"{y_v_sol=}\n")
     print(f"{y_e_sol=}\n")
     
     if SOLVE_CONVEX_RELAXATION:
         final_cost, x_v_sol, y_v_sol = rounding(y_e_sol, V, E, I_v_out)
+        
+        print("===============================================================")
+        print("POST-ROUNDING")
+        print("===============================================================")
+        
+        print(f"{x_v_sol=}\n")
+        print(f"{y_v_sol=}\n")
     
     visualize_results(As, bs, x_v_sol, y_v_sol)
     

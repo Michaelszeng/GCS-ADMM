@@ -1,11 +1,9 @@
 from pydrake.all import (
     MathematicalProgram, 
     Solve, 
-    Constraint,
 )
 
 import numpy as np
-import pandas as pd
 import sys
 import os
 import time
@@ -17,14 +15,10 @@ test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
 from test_autogen2 import As, bs, n
 
-def solve_convex_restriction(y_v, y_e):
+def solve_convex_restriction(V, E, y_v, y_e):
     """
     Solve the GCS problem given the path. This is a simple convex program. 
     """
-    V, E, I_v_in, I_v_out = build_graph(As, bs)
-    print(f"V: {V}")
-    print(f"E: {E}")
-
     prog = MathematicalProgram()
 
     ################################################################################
@@ -177,7 +171,7 @@ def rounding(y_e_sol, V, E, I_v_out, N=5, M=20, solve_convex_restriction=solve_c
                     y_e[edge] = 1
                 
                 # Solve convex restriction
-                cost, x_v_sol, y_v_sol = solve_convex_restriction(y_v, y_e)
+                cost, x_v_sol, y_v_sol = solve_convex_restriction(V, E, y_v, y_e)
                 if cost != float('inf'):
                     candidate_solutions.append((cost, x_v_sol, y_v_sol))
     

@@ -8,7 +8,6 @@ import pandas as pd
 import sys
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 np.set_printoptions(edgeitems=30, linewidth=250, precision=4, suppress=True)
 
@@ -28,28 +27,27 @@ mosek_solver = MosekSolver()
 if not mosek_solver.available():
     print("WARNING: MOSEK unavailable.")
 
-# Public variable set to use to express consensus constraints and penalties
-x_v_global = {}
-z_v_global = {}
-y_v_global = {}
-x_v_e_global = {}
-z_v_e_global = {}
-y_e_global = {}
-
 class ConsensusManager():
     """
     A class designed to take advantage of Drake's built-in optimization tools to
     more easily express the consensus constraints and penalties in standard
     Ax + Bz = c form.
     """
-    def __init__(self, x_v, z_v, y_v, x_v_e, z_v_e, y_e):
+    def __init__(self):
         """
         Builds the MathematicalProgram containing all the variables in the split
         ADMM formulation.
         
         Args:
             Empty dictionaries for all variables in the split ADMM formulation.
-        """    
+        """
+        x_v = {}
+        z_v = {}
+        y_v = {}
+        x_v_e = {}
+        z_v_e = {}
+        y_e = {}
+
         self.prog = MathematicalProgram()
         
         # Build variable set for x variables
@@ -190,11 +188,11 @@ class ConsensusManager():
             vars = vars[0]
         
         if "x_v" in vars.get_name():
-            var = x_v_global[v]
+            var = self.x_v[v]
         elif "z_v" in vars.get_name():
-            var = z_v_global[v]
+            var = self.z_v[v]
         elif "y_v" in vars.get_name():
-            var = [y_v_global[v]]
+            var = [self.y_v[v]]
         else:
             raise ValueError("Invalid variable name.")
         
@@ -220,11 +218,11 @@ class ConsensusManager():
             vars = vars[0]
         
         if "x_v_e" in vars.get_name() or "x_w_e" in vars.get_name():
-            var = x_v_e_global[(v, e)]
+            var = self.x_v_e[(v, e)]
         elif "z_v_e" in vars.get_name() or "z_w_e" in vars.get_name():
-            var = z_v_e_global[(v, e)]
+            var = self.z_v_e[(v, e)]
         elif "y_e" in vars.get_name():
-            var = [y_e_global[e]]
+            var = [self.y_e[e]]
         
         idx_first = self.prog.FindDecisionVariableIndex(var[0]) - self.z_idx
         idx_last = self.prog.FindDecisionVariableIndex(var[-1]) - self.z_idx
@@ -298,7 +296,7 @@ class ConsensusManager():
 
 
 # Build consensus manager to handle construction of A, B, c matrices for consensus constraints and penalties
-consensus_manager = ConsensusManager(x_v_global, z_v_global, y_v_global, x_v_e_global, z_v_e_global, y_e_global)
+consensus_manager = ConsensusManager()
 A, B, c = consensus_manager.build_A_B_c_consensus_matrices()  # Just build these once; they remain constant throughout optimization
 
 # Variables to store current global values of split x and z variables
