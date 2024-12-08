@@ -4,7 +4,6 @@
 Note on variable naming conventions: variable z_{e_u^w} is named z_e_u_w
 """
 
-
 from pydrake.all import (
     MathematicalProgram, 
     MosekSolver,
@@ -26,12 +25,11 @@ from utils import *
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test_autogen1 import As, bs, n
+from test3 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
 print(f"E: {E}")
-
 
 # Establish solver
 mosek_solver = MosekSolver()
@@ -320,9 +318,9 @@ consensus_manager = ConsensusManager()
 A, B, c = consensus_manager.build_A_B_c_consensus_matrices()  # Just build these once; they remain constant throughout optimization
 
 # Variables to store current global values of split x and z variables at current time step
-# Consists of x_v, z_v, y_v
+# Consists of x_v, z_v, y_v, z_e_u_v, y_e_v
 x_global = np.zeros(consensus_manager.get_num_x_vars())
-# Consists of x_v_e, z_v_e, y_e
+# Consists of z_e_u_e, y_e_e
 z_global = np.zeros(consensus_manager.get_num_z_vars())
 
 mu_global = np.zeros(consensus_manager.get_num_mu_vars())
@@ -469,6 +467,7 @@ def parallel_vertex_update(rho):
     t_elapsed = time.time() - t_start
     x_updated = np.zeros(consensus_manager.get_num_x_vars())
     for i, result in enumerate(results):
+        # Define for convenience
         x_v = prog_vars[i][0]
         z_v = prog_vars[i][1]
         y_v = prog_vars[i][2]
@@ -493,7 +492,6 @@ def parallel_vertex_update(rho):
             x_updated[consensus_manager.get_x_var_indices(x_v, v)] = x_v_sol
             x_updated[consensus_manager.get_x_var_indices(z_v, v)] = z_v_sol
             x_updated[consensus_manager.get_x_var_indices(y_v, v)] = y_v_sol
-            
             for e in I_v_in[v] + I_v_out[v]:
                 x_updated[consensus_manager.get_x_var_indices(z_e_u_v[(e, e[0])], v, e, e[0])] = z_e_u_v_sol[(e, e[0])]
                 x_updated[consensus_manager.get_x_var_indices(z_e_u_v[(e, e[1])], v, e, e[1])] = z_e_u_v_sol[(e, e[1])]
@@ -510,7 +508,6 @@ def parallel_vertex_update(rho):
             x_updated[consensus_manager.get_x_var_indices(x_v, v)] = x_global[consensus_manager.get_x_var_indices(x_v, v)]
             x_updated[consensus_manager.get_x_var_indices(z_v, v)] = x_global[consensus_manager.get_x_var_indices(z_v, v)]
             x_updated[consensus_manager.get_x_var_indices(y_v, v)] = x_global[consensus_manager.get_x_var_indices(y_v, v)]
-            
             for e in I_v_in[v] + I_v_out[v]:
                 x_updated[consensus_manager.get_x_var_indices(z_e_u_v, v, e, e[0])] = x_global[consensus_manager.get_x_var_indices(z_e_u_v, v, e, e[0])]
                 x_updated[consensus_manager.get_x_var_indices(z_e_u_v, v, e, e[1])] = x_global[consensus_manager.get_x_var_indices(z_e_u_v, v, e, e[1])]
@@ -543,7 +540,7 @@ def edge_update(rho, e):
 
 def parallel_edge_update(rho):
     """
-    Solve edge updates in parallel. 
+    Solve edge updates "in parallel". 
     
     Args:
         rho: scalar penalty parameter.
@@ -564,7 +561,6 @@ def parallel_edge_update(rho):
     
     return t_elapsed
         
-    
 
 def dual_update():
     """
@@ -627,7 +623,7 @@ eps_abs = 1e-4
 eps_rel = 1e-3
 
 it = 1
-MAX_IT = 400
+MAX_IT = 200
 
 cumulative_solve_time = 0
 
