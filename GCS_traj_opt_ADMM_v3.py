@@ -26,7 +26,7 @@ from utils import *
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test3 import As, bs, n
+from test_autogen1 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -422,7 +422,7 @@ def vertex_update(rho, v):
         u, w = e
         # Constraint 5: z_{e_u^v,2} = z_{e_w^v,1} for each edge e = (u, w)
         for d in range(n):  # n because we only check equivalence of one point in each z_v_e (which represents two points)
-            prog.AddConstraint(z_e_u_v[(e, u)][n+d] == z_e_u_v[(e, w)][n+d])
+            prog.AddConstraint(z_e_u_v[(e, u)][n+d] == z_e_u_v[(e, w)][d])
             
     # Flow Constraints
     delta_sv = delta('s', v)
@@ -623,8 +623,8 @@ nu = 10
 frac = 0.01  # after frac of iterations, stop updating rho
 
 opt = False
-eps_abs = 1e-5
-eps_rel = 1e-4
+eps_abs = 1e-4
+eps_rel = 1e-3
 
 it = 1
 MAX_IT = 400
