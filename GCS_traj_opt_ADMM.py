@@ -17,7 +17,7 @@ from utils import *
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test2 import As, bs, n
+from test3 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -355,6 +355,16 @@ def vertex_update(rho, v):
 
 
 def parallel_vertex_update(rho):
+    """
+    Solve vertex updates in parallel. 
+    
+    Args:
+        rho: scalar penalty parameter.
+        
+    Returns:
+        np.ndarray: updated x variable set.
+        float: elapsed solve time.
+    """
     # Accumulate all vertex update programs
     progs = []
     prog_vars = []
@@ -364,7 +374,9 @@ def parallel_vertex_update(rho):
         prog_vars.append((x_v, z_v, y_v))
         
     # Solve all vertex update programs in parallel
+    t_start = time.time()
     results = SolveInParallel(progs, solver_ids=[MosekSolver().solver_id()] * len(progs))
+    t_elapsed = time.time() - t_start
     x_updated = np.zeros(consensus_manager.get_num_x_vars())
     for i, result in enumerate(results):
         x_v = prog_vars[i][0]
@@ -399,7 +411,7 @@ def parallel_vertex_update(rho):
             x_updated[consensus_manager.get_x_var_indices(z_v, v)] = x_global[consensus_manager.get_x_var_indices(z_v, v)]
             x_updated[consensus_manager.get_x_var_indices(y_v, v)] = x_global[consensus_manager.get_x_var_indices(y_v, v)]
                 
-    return x_updated
+    return x_updated, t_elapsed
 
 
 def edge_update(rho, e):
@@ -470,6 +482,16 @@ def edge_update(rho, e):
     
 
 def parallel_edge_update(rho):
+    """
+    Solve edge updates in parallel. 
+    
+    Args:
+        rho: scalar penalty parameter.
+        
+    Returns:
+        np.ndarray: updated z variable set.
+        float: elapsed solve time.
+    """
     # Accumulate all edge update programs
     progs = []
     prog_vars = []
@@ -479,7 +501,9 @@ def parallel_edge_update(rho):
         prog_vars.append((x_v_e, z_v_e, x_w_e, z_w_e, y_e))
         
     # Solve all edge update programs in parallel
+    t_start = time.time()
     results = SolveInParallel(progs, solver_ids=[MosekSolver().solver_id()] * len(progs))
+    t_elapsed = time.time() - t_start
     z_updated = np.zeros(consensus_manager.get_num_z_vars())
     for i, result in enumerate(results):
         e = E[i]
@@ -524,15 +548,14 @@ def parallel_edge_update(rho):
             z_updated[consensus_manager.get_z_var_indices(z_w_e, e[1], e)] = z_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)]
             z_updated[consensus_manager.get_z_var_indices(y_e, None, e)] = z_global[consensus_manager.get_z_var_indices(y_e, None, e)]
             
-    return z_updated
+    return z_updated, t_elapsed
             
 
 def dual_update():
     """
     Perform dual update ("mu-update") step.
     """
-    global mu_global
-    mu_global = mu_global + (A @ x_global + B @ z_global - c)
+    return mu_global + (A @ x_global + B @ z_global - c)
     
     
 def evaluate_primal_residual():
@@ -543,7 +566,16 @@ def evaluate_dual_residual(z_global_prev):
     return rho * np.linalg.norm(A.T @ B @ (z_global - z_global_prev))
 
 
+def eps_pri(eps_abs, eps_rel, ord=2):
+    return np.sqrt(x_global.shape[0]) * eps_abs + eps_rel * max(
+        np.linalg.norm(A @ x_global, ord=ord),
+        np.linalg.norm(B @ z_global, ord=ord),
+        np.linalg.norm(c, ord=ord)
+    )
 
+    
+def eps_dual(eps_abs, eps_rel, ord=2):
+    return np.sqrt(mu_global.shape[0]) * eps_abs + eps_rel * np.linalg.norm(mu_global, ord=ord)
 
 
 ################################################################################
@@ -568,14 +600,22 @@ tau_incr = 2
 tau_decr = 2
 nu = 10
 frac = 0.01  # after frac of iterations, stop updating rho
+
+opt = False
+eps_abs = 1e-4
+eps_rel = 1e-3
+
 it = 1
-MAX_IT = 100
+MAX_IT = 400
+
+cumulative_solve_time = 0
 
 while it <= MAX_IT:
     ##############################
     ### Vertex Updates
     ##############################
-    x_global = parallel_vertex_update(rho)
+    x_global, vertex_solve_time = parallel_vertex_update(rho)
+    cumulative_solve_time += vertex_solve_time
 
     if not np.all(np.isfinite(x_global)):
         print("BREAKING FOR Divergence")
@@ -590,7 +630,8 @@ while it <= MAX_IT:
     ### Edge Updates
     ##############################
     prev_z_global = z_global.copy()
-    z_global = parallel_edge_update(rho)
+    z_global, edge_solve_time = parallel_edge_update(rho)
+    cumulative_solve_time += edge_solve_time
 
     if not np.all(np.isfinite(z_global)):
         print("BREAKING FOR Divergence")
@@ -604,7 +645,7 @@ while it <= MAX_IT:
     ##############################
     ### Dual Update
     ##############################
-    dual_update()
+    mu_global = dual_update()
     
     # Update mu history
     mu_seq.append(mu_global)
@@ -624,8 +665,12 @@ while it <= MAX_IT:
         mu_global *= tau_incr
     rho_seq.append(rho)
     
+    # Check for convergence
+    if pri_res_seq[-1] < eps_pri(eps_abs, eps_rel) and dual_res_seq[-1] < eps_dual(eps_abs, eps_rel):
+        opt = True
+    
     # Debug
-    if it % 100 == 0 or it == MAX_IT:
+    if it % 100 == 0 or it == MAX_IT or opt:
     # if it == MAX_IT:
         print(f"it = {it}/{MAX_IT}, {pri_res_seq[-1]=}, {dual_res_seq[-1]=}")
         fig, ax = plt.subplots(3)
@@ -636,6 +681,10 @@ while it <= MAX_IT:
         ax[2].loglog(dual_res_seq)
         ax[2].set_title("dual_res")
         plt.show()
+        
+    if opt:
+        print("BREAKING FOR OPT")
+        break
     
     it += 1
     
@@ -655,6 +704,8 @@ y_e_sol = {e: y_e_seq[-1][i] for i, e in enumerate(E)}
 print(f"x_v: {x_v_seq[-1]}")
 print(f"y_v: {y_v_seq[-1]}")
 print(f"y_e: {y_e_seq[-1]}")
+
+print(f"Total solve time: {cumulative_solve_time} s.")
 
 visualize_results(As, bs, x_v_sol, y_v_sol)
 
