@@ -26,7 +26,7 @@ from utils import *
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test_autogen2 import As, bs, n
+from test3 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -192,17 +192,18 @@ class ConsensusManager():
         """
         if isinstance(vars, np.ndarray):
             vars = vars[0]
-        
+            
         if re.search("x_.*", vars.get_name()):
             var = self.x_v[v]
+        # Search for z_e_u_v first because it has the most specific naming convention
+        elif re.search("z_\(.*\).*", vars.get_name()):
+            var = self.z_e_u_v[(e, u, v)]
+        elif re.search("y_\(.*\).*", vars.get_name()):
+            var = [self.y_e_v[(e, v)]]
         elif re.search("z_.*", vars.get_name()):
             var = self.z_v[v]
         elif re.search("y_.*", vars.get_name()):
             var = [self.y_v[v]]
-        elif re.search("z_(.*).*", vars.get_name()):
-            var = self.z_e_u_v[(e, u, v)]
-        elif re.search("y_(.*).*", vars.get_name()):
-            var = [self.y_e_v[(e, v)]]
         else:
             raise ValueError("Invalid variable name.")
         
@@ -369,15 +370,22 @@ def vertex_update(rho, v):
     var_indices = np.concatenate([np.arange(s.start, s.stop) for s in [consensus_manager.get_x_var_indices(x_v, v), 
                                                                        consensus_manager.get_x_var_indices(z_v, v), 
                                                                        consensus_manager.get_x_var_indices(y_v, v)] + 
-                                                                      [consensus_manager.get_x_var_indices(z_e_u_v[(e, e[0])], e, v) for e in I_v_in[v] + I_v_out[v]] +
-                                                                      [consensus_manager.get_x_var_indices(z_e_u_v[(e, e[1])], e, v) for e in I_v_in[v] + I_v_out[v]] +
-                                                                      [consensus_manager.get_x_var_indices(y_e_v[e], e, v) for e in I_v_in[v] + I_v_out[v]]])
+                                                                      [consensus_manager.get_x_var_indices(z_e_u_v[(e, e[0])], v, e, e[0]) for e in I_v_in[v] + I_v_out[v]] +
+                                                                      [consensus_manager.get_x_var_indices(z_e_u_v[(e, e[1])], v, e, e[1]) for e in I_v_in[v] + I_v_out[v]] +
+                                                                      [consensus_manager.get_x_var_indices(y_e_v[e], v, e) for e in I_v_in[v] + I_v_out[v]]])
     x_fixed = np.delete(x_global.copy(), var_indices)
-    x_var = np.concatenate([x_v, z_v, [y_v]])
+    x_var = np.concatenate([x_v, z_v, [y_v], *[z_e_u_v[(e, e[0])] for e in I_v_in[v] + I_v_out[v]], 
+                                             *[z_e_u_v[(e, e[1])] for e in I_v_in[v] + I_v_out[v]], 
+                                             *[[y_e_v[e]] for e in I_v_in[v] + I_v_out[v]]])
     # Split A into fixed part and variable part. Note that this is necessary simply because we can't stack fixed and variable parts of x into a single np vector.
     A_fixed = np.delete(A, var_indices, axis=1)
     A_var = A[:, var_indices]
     # z and mu are all fixed
+    # print(f"A_var.shape: {A_var.shape}")
+    # print(f"x_var.shape: {x_var.shape}")
+    # print(f"B.shape: {B.shape}")
+    # print(f"z_global.shape: {z_global.shape}")
+    # print(f"c.shape: {c.shape}")
     # residual = A_fixed @ x_fixed + A_var @ x_var + B @ z_global - c
     residual = A_var @ x_var + B @ z_global - c  # NOTE: DOES NOT SEEM TO MATTER WHETHER WE INCLUDE A_fixed @ x_fixed OR NOT
     prog.AddCost((rho/2) * (residual + mu_global).T @ (residual + mu_global))
@@ -407,7 +415,7 @@ def vertex_update(rho, v):
 
             # Constraint 4: A_v (x_{v,i} - z_{e_v^v,i}) ≤ (1 - y_e^v) b_v
             for j in range(m):
-                prog.AddConstraint(As[v][j] @ (x_v[v][idx] - z_e_u_v[(e, v)][idx]) <= (1 - y_e_v[e]) * bs[v][j])
+                prog.AddConstraint(As[v][j] @ (x_v[idx] - z_e_u_v[(e, v)][idx]) <= (1 - y_e_v[e]) * bs[v][j])
                 
     # Path Continuity Constraints
     for e in I_v_in[v] + I_v_out[v]:
@@ -421,17 +429,17 @@ def vertex_update(rho, v):
     delta_tv = delta('t', v)
     # Constraint 6: y_v = sum_{e ∈ I_v_in} y_e^v + δ_{sv} = sum_{e ∈ I_v_out} y_e^v + δ_{tv}, y_v ≤ 1
     # y_v = sum_{e ∈ I_v_in} y_e^v + δ_{sv}
-    prog.AddConstraint(y_v[v] == sum(y_e_v[e] for e in I_v_in[v]) + delta_sv)
+    prog.AddConstraint(y_v == sum(y_e_v[e] for e in I_v_in[v]) + delta_sv)
     # y_v = sum_{e ∈ I_v_out} y_e^v + δ_{tv}
-    prog.AddConstraint(y_v[v] == sum(y_e_v[e] for e in I_v_out[v]) + delta_tv)
+    prog.AddConstraint(y_v == sum(y_e_v[e] for e in I_v_out[v]) + delta_tv)
     
     # Perspective Flow Constraints  
     # Constraint 7: z_v = sum_{e ∈ I_v_in} z_{e_v^v} + δ_{sv} x_v = sum_{e ∈ I_v_out} z_{e_v^v} + δ_{tv} x_v
     for d in range(2*n):   # 2n because z_v is 2n-dimensional
         # z_v = sum_{e ∈ I_v_in} z_{e_v^v} + δ_{sv} x_v
-        prog.AddConstraint(z_v[v][d] == sum(z_e_u_v[(e, v)][d] for e in I_v_in[v]) + delta_sv * x_v[v][d])
+        prog.AddConstraint(z_v[d] == sum(z_e_u_v[(e, v)][d] for e in I_v_in[v]) + delta_sv * x_v[d])
         # z_v = sum_{e ∈ I_v_out} z_{e_v^v} + δ_{tv} x_v
-        prog.AddConstraint(z_v[v][d] == sum(z_e_u_v[(e, v)][d] for e in I_v_out[v]) + delta_tv * x_v[v][d])
+        prog.AddConstraint(z_v[d] == sum(z_e_u_v[(e, v)][d] for e in I_v_out[v]) + delta_tv * x_v[d])
 
     return prog, x_v, z_v, y_v, z_e_u_v, y_e_v
 
@@ -487,9 +495,9 @@ def parallel_vertex_update(rho):
             x_updated[consensus_manager.get_x_var_indices(y_v, v)] = y_v_sol
             
             for e in I_v_in[v] + I_v_out[v]:
-                x_updated[consensus_manager.get_x_var_indices(z_e_u_v, v, e, e[0])] = z_e_u_v_sol[(e, e[0])]
-                x_updated[consensus_manager.get_x_var_indices(z_e_u_v, v, e, e[1])] = z_e_u_v_sol[(e, e[1])]
-                x_updated[consensus_manager.get_x_var_indices(y_v_sol, v, e)] = y_e_v_sol[(e)]
+                x_updated[consensus_manager.get_x_var_indices(z_e_u_v[(e, e[0])], v, e, e[0])] = z_e_u_v_sol[(e, e[0])]
+                x_updated[consensus_manager.get_x_var_indices(z_e_u_v[(e, e[1])], v, e, e[1])] = z_e_u_v_sol[(e, e[1])]
+                x_updated[consensus_manager.get_x_var_indices(y_e_v[e], v, e)] = y_e_v_sol[(e)]
             
         else:
             print("solve failed.")
@@ -615,8 +623,8 @@ nu = 10
 frac = 0.01  # after frac of iterations, stop updating rho
 
 opt = False
-eps_abs = 1e-4
-eps_rel = 1e-3
+eps_abs = 1e-5
+eps_rel = 1e-4
 
 it = 1
 MAX_IT = 400
@@ -638,8 +646,8 @@ while it <= MAX_IT:
     x_v_seq.append(x_global[consensus_manager.get_x_v_var_indices_in_x()])
     z_v_seq.append(x_global[consensus_manager.get_z_v_var_indices_in_x()])
     y_v_seq.append(x_global[consensus_manager.get_y_v_var_indices_in_x()])
-    z_e_u_v_seq.append([x_global[consensus_manager.get_z_e_u_v_var_indices_in_x()]])
-    y_e_v_seq.append([x_global[consensus_manager.get_y_e_v_var_indices_in_x()]])
+    z_e_u_v_seq.append(x_global[consensus_manager.get_z_e_u_v_var_indices_in_x()])
+    y_e_v_seq.append(x_global[consensus_manager.get_y_e_v_var_indices_in_x()])
     
     ##############################
     ### Edge Updates
@@ -716,9 +724,9 @@ x_v_sol = {v: x_v_seq[-1][2*i*n : 2*(i+1)*n] for i, v in enumerate(V)}
 y_v_sol = {v: y_v_seq[-1][i] for i, v in enumerate(V)}
 y_e_v_sol = {e: y_e_v_seq[-1][i] for i, e in enumerate(E)}
 
-print(f"x_v: {x_v_seq[-1]}")
-print(f"y_v: {y_v_seq[-1]}")
-print(f"y_e: {y_e_v_seq[-1]}")
+print(f"x_v: {x_v_sol}")
+print(f"y_v: {y_v_sol}")
+print(f"y_e: {y_e_v_sol}")
 
 print(f"Total solve time: {cumulative_solve_time} s.")
 
