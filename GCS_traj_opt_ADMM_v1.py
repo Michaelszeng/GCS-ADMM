@@ -48,29 +48,29 @@ class ConsensusManager():
         Args:
             Empty dictionaries for all variables in the split ADMM formulation.
         """
-        x_v = {}
-        z_v = {}
-        y_v = {}
-        x_v_e = {}
-        z_v_e = {}
-        y_e = {}
+        self.x_v = {}
+        self.z_v = {}
+        self.y_v = {}
+        self.x_v_e = {}
+        self.z_v_e = {}
+        self.y_e = {}
 
         self.prog = MathematicalProgram()
         
         # Build variable set for x variables
         x_v_start_idx = self.prog.num_vars()
         for v in V:
-            x_v[v] = self.prog.NewContinuousVariables(2 * n, f'x_{v}')
+            self.x_v[v] = self.prog.NewContinuousVariables(2 * n, f'x_{v}')
         self.x_v_indices_in_x = slice(x_v_start_idx, self.prog.num_vars())  # Keep track of x_v indices in x variable set
         
         z_v_start_idx = self.prog.num_vars()
         for v in V:
-            z_v[v] = self.prog.NewContinuousVariables(2 * n, f'z_{v}')
+            self.z_v[v] = self.prog.NewContinuousVariables(2 * n, f'z_{v}')
         self.z_v_indices_in_x = slice(z_v_start_idx, self.prog.num_vars())  # Keep track of z_v indices in x variable set
         
         y_v_start_idx = self.prog.num_vars()
         for v in V:
-            y_v[v] = self.prog.NewBinaryVariables(1, f'y_{v}')[0]
+            self.y_v[v] = self.prog.NewBinaryVariables(1, f'y_{v}')[0]
         self.y_v_indices_in_x = slice(y_v_start_idx, self.prog.num_vars())  # Keep track of y_v indices in x variable set
         
         # Build variable set for z variables
@@ -78,9 +78,9 @@ class ConsensusManager():
         x_v_e_start_idx = 0
         for v in V:
             for e in I_v_in[v] + I_v_out[v]:
-                x_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'x_{v}_e_{e}')
+                self.x_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'x_{v}_e_{e}')
                 if first_z_var is None:
-                    first_z_var = x_v_e[(v, e)][0]
+                    first_z_var = self.x_v_e[(v, e)][0]
                     # Make it easier to index into the z variables
                     self.z_idx = self.prog.FindDecisionVariableIndex(first_z_var)
         self.x_v_e_indices_in_z = slice(x_v_e_start_idx, self.prog.num_vars() - self.z_idx)  # Keep track of x_v_e indices in z variable set
@@ -88,20 +88,13 @@ class ConsensusManager():
         z_v_e_start_idx = self.prog.num_vars() - self.z_idx
         for v in V:
             for e in I_v_in[v] + I_v_out[v]:
-                z_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'z_{v}_e_{e}')
+                self.z_v_e[(v, e)] = self.prog.NewContinuousVariables(2 * n, f'z_{v}_e_{e}')
         self.z_v_e_indices_in_z = slice(z_v_e_start_idx, self.prog.num_vars() - self.z_idx)  # Keep track of z_v_e indices in z variable set
             
         y_e_start_idx = self.prog.num_vars() - self.z_idx
         for e in E:
-            y_e[e] = self.prog.NewBinaryVariables(1, f'y_e_{e}')[0]
+            self.y_e[e] = self.prog.NewBinaryVariables(1, f'y_e_{e}')[0]
         self.y_e_indices_in_z = slice(y_e_start_idx, self.prog.num_vars() - self.z_idx)  # Keep track of y_e indices in z variable set
-        
-        self.x_v = x_v
-        self.z_v = z_v
-        self.y_v = y_v
-        self.x_v_e = x_v_e
-        self.z_v_e = z_v_e
-        self.y_e = y_e
         
         self.A = None
         self.B = None
@@ -143,9 +136,9 @@ class ConsensusManager():
             consensus_costraints.append(self.y_v[v] == sum(self.y_e[e] for e in I_v_out[v]) + delta_tv)
             
             for d in range(2*n):   # 2n because z_v is 2n-dimensional
-                # z_v = sum_in_z_v_e + δ_{sv} x_v
+                # z_v = sum_{e ∈ I_v_in} z_v_e + δ_{sv} x_v
                 consensus_costraints.append(self.z_v[v][d] == sum(self.z_v_e[(v, e)][d] for e in I_v_in[v]) + delta_sv * self.x_v[v][d])
-                # z_v = sum_out_z_v_e + δ_{tv} x_v
+                # z_v = sum_{e ∈ I_v_out} z_v_e + δ_{tv} x_v
                 consensus_costraints.append(self.z_v[v][d] == sum(self.z_v_e[(v, e)][d] for e in I_v_out[v]) + delta_tv * self.x_v[v][d])
                 
         # Now, construct A, B, c
@@ -230,6 +223,8 @@ class ConsensusManager():
             var = self.z_v_e[(v, e)]
         elif re.search("y_.*", vars.get_name()):
             var = [self.y_e[e]]
+        else:
+            raise ValueError("Invalid variable name.")
         
         idx_first = self.prog.FindDecisionVariableIndex(var[0]) - self.z_idx
         idx_last = self.prog.FindDecisionVariableIndex(var[-1]) - self.z_idx

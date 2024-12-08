@@ -137,9 +137,9 @@ for v in V:
     
     # Constraint 7: z_v = sum_{e ∈ I_v_in} z^e_v + δ_{sv} x_v = sum_{e ∈ I_v_out} z^e_v + δ_{tv} x_v
     for d in range(2*n):   # 2n because z_v is 2n-dimensional
-        # z_v = sum_in_z_v_e + δ_{sv} x_v
+        # z_v = sum_{e ∈ I_v_in} z_v_e + δ_{sv} x_v
         prog.AddConstraint(z_v[v][d] == sum(z_v_e[(v, e)][d] for e in I_v_in[v]) + delta_sv * x_v[v][d])
-        # z_v = sum_out_z_v_e + δ_{tv} x_v
+        # z_v = sum_{e ∈ I_v_out} z_v_e + δ_{tv} x_v
         prog.AddConstraint(z_v[v][d] == sum(z_v_e[(v, e)][d] for e in I_v_out[v]) + delta_tv * x_v[v][d])
     
 ################################################################################
