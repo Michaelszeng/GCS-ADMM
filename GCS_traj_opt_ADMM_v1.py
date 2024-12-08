@@ -13,6 +13,7 @@ import pandas as pd
 import sys
 import os
 import time
+import re
 
 np.set_printoptions(edgeitems=30, linewidth=250, precision=4, suppress=True)
 
@@ -193,11 +194,11 @@ class ConsensusManager():
         if isinstance(vars, np.ndarray):
             vars = vars[0]
         
-        if "x_v" in vars.get_name():
+        if re.search("x_.*", vars.get_name()):
             var = self.x_v[v]
-        elif "z_v" in vars.get_name():
+        elif re.search("z_.*", vars.get_name()):
             var = self.z_v[v]
-        elif "y_v" in vars.get_name():
+        elif re.search("y_.*", vars.get_name()):
             var = [self.y_v[v]]
         else:
             raise ValueError("Invalid variable name.")
@@ -223,11 +224,11 @@ class ConsensusManager():
         if isinstance(vars, np.ndarray):
             vars = vars[0]
         
-        if "x_v_e" in vars.get_name() or "x_w_e" in vars.get_name():
+        if re.search("x_._e.*", vars.get_name()):
             var = self.x_v_e[(v, e)]
-        elif "z_v_e" in vars.get_name() or "z_w_e" in vars.get_name():
+        elif re.search("z_._e.*", vars.get_name()):
             var = self.z_v_e[(v, e)]
-        elif "y_e" in vars.get_name():
+        elif re.search("y_.*", vars.get_name()):
             var = [self.y_e[e]]
         
         idx_first = self.prog.FindDecisionVariableIndex(var[0]) - self.z_idx
@@ -401,9 +402,9 @@ def parallel_vertex_update(rho):
             z_v_sol = result.GetSolution(z_v)
             y_v_sol = result.GetSolution(y_v)
 
-            print(f"x_v_sol: NEW: {x_v_sol}. OLD: {x_global[consensus_manager.get_x_var_indices(x_v, v)]}.\n")
-            print(f"z_v_sol: NEW: {z_v_sol}. OLD: {x_global[consensus_manager.get_x_var_indices(z_v, v)]}.\n")
-            print(f"y_v_sol: NEW: {y_v_sol}. OLD: {x_global[consensus_manager.get_x_var_indices(y_v, v)]}.\n")
+            # print(f"x_v_sol: NEW: {x_v_sol}. OLD: {x_global[consensus_manager.get_x_var_indices(x_v, v)]}.\n")
+            # print(f"z_v_sol: NEW: {z_v_sol}. OLD: {x_global[consensus_manager.get_x_var_indices(z_v, v)]}.\n")
+            # print(f"y_v_sol: NEW: {y_v_sol}. OLD: {x_global[consensus_manager.get_x_var_indices(y_v, v)]}.\n")
             
             # Build next x value set
             x_updated[consensus_manager.get_x_var_indices(x_v, v)] = x_v_sol
@@ -425,7 +426,7 @@ def parallel_vertex_update(rho):
     return x_updated, t_elapsed
     
 
-def edge_update(rho, e):
+def edge_update(rho):
     """
     Perform edge update ("z-update") step for a single vertex edge e = (v,w).
     
@@ -436,83 +437,87 @@ def edge_update(rho, e):
     global z_global
     
     prog = MathematicalProgram()
-    x_v_e = prog.NewContinuousVariables(2 * n, f'x_v_e')
-    z_v_e = prog.NewContinuousVariables(2 * n, f'z_v_e')
-    x_w_e = prog.NewContinuousVariables(2 * n, f'x_w_e')
-    z_w_e = prog.NewContinuousVariables(2 * n, f'z_w_e')
-    y_e = prog.NewContinuousVariables(1, f'y_e')[0]  # Relax y_e to 0 <= y_e <= 1
-    prog.AddBoundingBoxConstraint(0, 1, y_e)
     
-    # Edge Activation Penalty: 1e-4 * y_e
-    prog.AddCost(1e-4 * y_e)
+    x_v_e = {}
+    z_v_e = {}
+    y_e = {}
+    z = []
     
+    # Variables x^e_v for each vertex v ∈ V and each incident edge e ∈ I_v
+    for v in V:
+        for e in I_v_in[v] + I_v_out[v]:
+            var = prog.NewContinuousVariables(2 * n, f'x_{v}_e_{e}')
+            x_v_e[(v, e)] = var
+            z.extend(var)
+    
+    # Variables z^e_v for each vertex v ∈ V and each incident edge e ∈ I_v
+    for v in V:
+        for e in I_v_in[v] + I_v_out[v]:
+            var = prog.NewContinuousVariables(2 * n, f'z_{v}_e_{e}')
+            z_v_e[(v, e)] = var
+            z.extend(var)
+    
+    # Variables for each edge e ∈ E
+    for e in E:
+        var = prog.NewContinuousVariables(1, f'y_e_{e}')[0]
+        y_e[e] = var
+        z.extend([var])
+        prog.AddBoundingBoxConstraint(0, 1, y_e[e])
+    
+    # Slight penalty for activating edges (to prevent 0-length 2-cycles from happening): sum_{e ∈ E} 1e-4 * y_e
+    for e in E:
+        prog.AddCost(1e-4 * y_e[e])
+
     # Concensus Constraint Penalty: (rho/2) * ||Ax + Bz + mu||^2
-    # Define z vectors containing fixed values and variable values
-    var_indices = np.concatenate([np.arange(s.start, s.stop) for s in [consensus_manager.get_z_var_indices(x_v_e, e[0], e), 
-                                                                       consensus_manager.get_z_var_indices(z_v_e, e[0], e), 
-                                                                       consensus_manager.get_z_var_indices(x_w_e, e[1], e), 
-                                                                       consensus_manager.get_z_var_indices(z_w_e, e[1], e), 
-                                                                       consensus_manager.get_z_var_indices(y_e, None, e)]])
-    z_fixed = np.delete(z_global.copy(), var_indices)
-    z_var = np.concatenate([x_v_e, z_v_e, x_w_e, z_w_e, [y_e]])
-    # Split B into fixed part and variable part. Note that this is necessary simply because we can't stack fixed and variable parts of z into a single np vector.
-    B_fixed = np.delete(B, var_indices, axis=1)
-    B_var = B[:, var_indices]
-    # x and mu are all fixed
-    residual = A @ x_global + B_fixed @ z_fixed + B_var @ z_var - c
+    # x and mu are all fixed; z is variable
+    residual = A @ x_global + B @ z - c
     prog.AddCost((rho/2) * (residual + mu_global).T @ (residual + mu_global))
     
-    # Point Containment Constraints (for both points corresponding to e)
-    for v in e:  # e = (v,w)
+    
+    # Edge Point Containment Constraints
+    for v in V:
         m = As[v].shape[0]
-        
-        # Select whether to constraint x_v_e and z_v_e or x_w_e and z_w_e
-        if v == e[0]:
-            z_v_e_active = z_v_e
-            x_v_e_active = x_v_e
-        else:
-            z_v_e_active = z_w_e
-            x_v_e_active = x_w_e
-                
-        for i in range(2):
-            idx = slice(i * n, (i + 1) * n)
+        for e in I_v_in[v] + I_v_out[v]:
+            for i in range(2):
+                idx = slice(i * n, (i + 1) * n)
+
+                # Constraint 3: A_v z^e_{v,i} ≤ y_e b_v
+                for j in range(m):
+                    prog.AddConstraint(As[v][j] @ z_v_e[(v, e)][idx] <= y_e[e] * bs[v][j])
+
+                # Constraint 4: A_v (x_{v,i} - z^e_{v,i}) ≤ (1 - y_e) b_v
+                for j in range(m):
+                    prog.AddConstraint(As[v][j] @ (x_v_e[(v, e)][idx] - z_v_e[(v, e)][idx]) <= (1 - y_e[e]) * bs[v][j])
             
-            # Constraint 1: A_v z^e_{v,i} ≤ y_e b_v
-            for j in range(m):
-                prog.AddConstraint(As[v][j] @ z_v_e_active[idx] <= y_e * bs[v][j])
-                
-            # Constraint 2: A_v (x^e_{v,i} - z^e_{v,i}) ≤ (1 - y_e) b_v
-            for j in range(m):
-                prog.AddConstraint(As[v][j] @ (x_v_e_active[idx] - z_v_e_active[idx]) <= (1 - y_e) * bs[v][j])
-            
-    # Path Continuity Constraint: z^e_{v,2} = z^e_{w,1}
-    for dim in range(n):
-        prog.AddConstraint(z_v_e[n+dim] == z_w_e[dim])
+    # Path Continuity Constraints
+    for e in E:
+        v, w = e
+        # Constraint 5: z_{v,2}^e = z_{w,1}^e for each edge e = (v, w)
+        for d in range(n):  # n because we only check equivalence of one point in each z_v_e (which represents two points)
+            prog.AddConstraint(z_v_e[(v, e)][n+d] == z_v_e[(w, e)][d])
             
     t_start = time.time()
     result = mosek_solver.Solve(prog)
     t_elapsed = time.time() - t_start
     
     if result.is_success():
-        # Solution retreival
-        x_v_e_sol = result.GetSolution(x_v_e)
-        z_v_e_sol = result.GetSolution(z_v_e)
-        x_w_e_sol = result.GetSolution(x_w_e)
-        z_w_e_sol = result.GetSolution(z_w_e)
-        y_e_sol = result.GetSolution(y_e)
+        # Solution retreival and update global values
+        # x_v_e_sol = {}
+        # z_v_e_sol = {}
+        # y_e_sol = {}
 
-        print(f"x_v_e_sol: NEW: {x_v_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)]}.\n")
-        print(f"z_v_e_sol: NEW: {z_v_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(z_v_e, e[0], e)]}.\n")
-        print(f"x_v_e_sol: NEW: {x_w_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(x_w_e, e[1], e)]}.\n")
-        print(f"z_v_e_sol: NEW: {z_w_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)]}.\n")
-        print(f"y_e_sol:   NEW: {y_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(y_e, None, e)]}.\n")
-        
-        # Update global values
-        z_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)] = x_v_e_sol
-        z_global[consensus_manager.get_z_var_indices(z_v_e, e[0], e)] = z_v_e_sol
-        z_global[consensus_manager.get_z_var_indices(x_w_e, e[1], e)] = x_w_e_sol
-        z_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)] = z_w_e_sol
-        z_global[consensus_manager.get_z_var_indices(y_e, None, e)] = y_e_sol
+        # Variables x^e_v and z^e_v for each vertex v ∈ V and each incident edge e ∈ I_v
+        for v in V:
+            for e in I_v_in[v] + I_v_out[v]:
+                # x_v_e_sol[(v, e)] = result.GetSolution(x_v_e[(v, e)])
+                # z_v_e_sol[(v, e)] = result.GetSolution(z_v_e[(v, e)])
+                z_global[consensus_manager.get_z_var_indices(x_v_e[(v, e)], v, e)] = result.GetSolution(x_v_e[(v, e)])
+                z_global[consensus_manager.get_z_var_indices(z_v_e[(v, e)], v, e)] = result.GetSolution(z_v_e[(v, e)])
+            
+        # Variables for each edge e ∈ E
+        for e in E:
+            # y_e_sol[e] = result.GetSolution(y_e[e])
+            z_global[consensus_manager.get_z_var_indices(y_e[e], None, e)] = result.GetSolution(y_e[e])
         
     else:
         print("solve failed.")
@@ -604,11 +609,8 @@ while it <= MAX_IT:
     ##############################
     ### Edge Updates
     ##############################
-    # prev_z_global = z_global.copy()
-    # z_global, edge_solve_time = parallel_edge_update(rho)
-    for e in E:
-        edge_solve_time = edge_update(rho, e)
-        cumulative_solve_time += edge_solve_time
+    edge_solve_time = edge_update(rho)
+    cumulative_solve_time += edge_solve_time
 
     if not np.all(np.isfinite(z_global)):
         print("BREAKING FOR Divergence")

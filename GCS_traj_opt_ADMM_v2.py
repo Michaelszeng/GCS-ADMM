@@ -604,8 +604,6 @@ while it <= MAX_IT:
     ##############################
     ### Edge Updates
     ##############################
-    # prev_z_global = z_global.copy()
-    # z_global, edge_solve_time = parallel_edge_update(rho)
     for e in E:
         edge_solve_time = edge_update(rho, e)
         cumulative_solve_time += edge_solve_time
