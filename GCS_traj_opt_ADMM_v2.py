@@ -21,7 +21,7 @@ from utils import *
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test3 import As, bs, n
+from test_autogen2 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -345,7 +345,8 @@ def vertex_update(rho, v):
     A_fixed = np.delete(A, var_indices, axis=1)
     A_var = A[:, var_indices]
     # z and mu are all fixed
-    residual = A_fixed @ x_fixed + A_var @ x_var + B @ z_global - c
+    # residual = A_fixed @ x_fixed + A_var @ x_var + B @ z_global - c
+    residual = A_var @ x_var + B @ z_global - c  # NOTE: DOES NOT SEEM TO MATTER WHETHER WE INCLUDE A_fixed @ x_fixed OR NOT
     prog.AddCost((rho/2) * (residual + mu_global).T @ (residual + mu_global))
     
     # Point Containment Constraints

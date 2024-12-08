@@ -16,7 +16,7 @@ from utils import *
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test_autogen2 import As, bs, n
+from test_autogen1 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -29,6 +29,10 @@ prog = MathematicalProgram()
 ################################################################################
 SOLVE_CONVEX_RELAXATION = True
 # SOLVE_CONVEX_RELAXATION = False
+
+# Only matters if SOLVE_CONVEX_RELAXATION = True
+# PERFORM_ROUNDING = True
+PERFORM_ROUNDING = False
 
 x_v = {}
 z_v = {}
@@ -187,8 +191,8 @@ if result.is_success():
     print(f"{y_v_sol=}\n")
     print(f"{y_e_sol=}\n")
     
-    if SOLVE_CONVEX_RELAXATION:
-        final_cost, x_v_sol, y_v_sol = rounding(y_e_sol, V, E, I_v_out)
+    if SOLVE_CONVEX_RELAXATION and PERFORM_ROUNDING:
+        final_cost, x_v_sol, y_v_sol = rounding(y_e_sol, V, E, I_v_out, As, bs, n)
         
         print("===============================================================")
         print("POST-ROUNDING")

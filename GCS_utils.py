@@ -13,9 +13,8 @@ from utils import *
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test_autogen2 import As, bs, n
 
-def solve_convex_restriction(V, E, y_v, y_e):
+def solve_convex_restriction(As, bs, n, V, E, y_v, y_e):
     """
     Solve the GCS problem given the path. This is a simple convex program. 
     """
@@ -90,7 +89,7 @@ def solve_convex_restriction(V, E, y_v, y_e):
         return float('inf'), None, None
 
 
-def rounding(y_e_sol, V, E, I_v_out, N=5, M=20, solve_convex_restriction=solve_convex_restriction):
+def rounding(y_e_sol, V, E, I_v_out, As, bs, n, N=5, M=20, solve_convex_restriction=solve_convex_restriction):
     """
     Perform rounding steps using GCS convex relaxation result to obtain feasible
     solution (i.e. binary y variables).
@@ -122,7 +121,7 @@ def rounding(y_e_sol, V, E, I_v_out, N=5, M=20, solve_convex_restriction=solve_c
             if not edges:
                 return False
             
-            probs = np.array([y_e_sol[e] for e in edges])
+            probs = np.array([y_e_sol[e] for e in edges], dtype=float)
             total = probs.sum()
             if total < 1e-15:
                 return False
@@ -171,7 +170,7 @@ def rounding(y_e_sol, V, E, I_v_out, N=5, M=20, solve_convex_restriction=solve_c
                     y_e[edge] = 1
                 
                 # Solve convex restriction
-                cost, x_v_sol, y_v_sol = solve_convex_restriction(V, E, y_v, y_e)
+                cost, x_v_sol, y_v_sol = solve_convex_restriction(As, bs, n, V, E, y_v, y_e)
                 if cost != float('inf'):
                     candidate_solutions.append((cost, x_v_sol, y_v_sol))
     

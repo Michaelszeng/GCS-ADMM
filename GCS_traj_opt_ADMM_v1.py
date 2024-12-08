@@ -1,3 +1,7 @@
+"""
+Parallel vertex updates, with a combined edge update.
+"""
+
 from pydrake.all import (
     MathematicalProgram, 
     MosekSolver,
@@ -22,6 +26,12 @@ from test3 import As, bs, n
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
 print(f"E: {E}")
+
+
+# Establish solver
+mosek_solver = MosekSolver()
+if not mosek_solver.available():
+    print("WARNING: MOSEK unavailable.")
 
 class ConsensusManager():
     """
@@ -335,7 +345,8 @@ def vertex_update(rho, v):
     A_fixed = np.delete(A, var_indices, axis=1)
     A_var = A[:, var_indices]
     # z and mu are all fixed
-    residual = A_fixed @ x_fixed + A_var @ x_var + B @ z_global - c
+    # residual = A_fixed @ x_fixed + A_var @ x_var + B @ z_global - c
+    residual = A_var @ x_var + B @ z_global - c  # NOTE: DOES NOT SEEM TO MATTER WHETHER WE INCLUDE A_fixed @ x_fixed OR NOT
     prog.AddCost((rho/2) * (residual + mu_global).T @ (residual + mu_global))
     
     # Point Containment Constraints
@@ -412,7 +423,7 @@ def parallel_vertex_update(rho):
             x_updated[consensus_manager.get_x_var_indices(y_v, v)] = x_global[consensus_manager.get_x_var_indices(y_v, v)]
                 
     return x_updated, t_elapsed
-
+    
 
 def edge_update(rho, e):
     """
@@ -477,78 +488,40 @@ def edge_update(rho, e):
     # Path Continuity Constraint: z^e_{v,2} = z^e_{w,1}
     for dim in range(n):
         prog.AddConstraint(z_v_e[n+dim] == z_w_e[dim])
-    
-    return prog, x_v_e, z_v_e, x_w_e, z_w_e, y_e
-    
-
-def parallel_edge_update(rho):
-    """
-    Solve edge updates in parallel. 
-    
-    Args:
-        rho: scalar penalty parameter.
-        
-    Returns:
-        np.ndarray: updated z variable set.
-        float: elapsed solve time.
-    """
-    # Accumulate all edge update programs
-    progs = []
-    prog_vars = []
-    for e in E:
-        prog, x_v_e, z_v_e, x_w_e, z_w_e, y_e = edge_update(rho, e)
-        progs.append(prog)
-        prog_vars.append((x_v_e, z_v_e, x_w_e, z_w_e, y_e))
-        
-    # Solve all edge update programs in parallel
+            
     t_start = time.time()
-    results = SolveInParallel(progs, solver_ids=[MosekSolver().solver_id()] * len(progs))
+    result = mosek_solver.Solve(prog)
     t_elapsed = time.time() - t_start
-    z_updated = np.zeros(consensus_manager.get_num_z_vars())
-    for i, result in enumerate(results):
-        e = E[i]
-        x_v_e = prog_vars[i][0]
-        z_v_e = prog_vars[i][1]
-        x_w_e = prog_vars[i][2]
-        z_w_e = prog_vars[i][3]
-        y_e = prog_vars[i][4]
-        
-        if result.is_success():
-            # Solution retreival
-            x_v_e_sol = result.GetSolution(x_v_e)
-            z_v_e_sol = result.GetSolution(z_v_e)
-            x_w_e_sol = result.GetSolution(x_w_e)
-            z_w_e_sol = result.GetSolution(z_w_e)
-            y_e_sol = result.GetSolution(y_e)
+    
+    if result.is_success():
+        # Solution retreival
+        x_v_e_sol = result.GetSolution(x_v_e)
+        z_v_e_sol = result.GetSolution(z_v_e)
+        x_w_e_sol = result.GetSolution(x_w_e)
+        z_w_e_sol = result.GetSolution(z_w_e)
+        y_e_sol = result.GetSolution(y_e)
 
-            print(f"x_v_e_sol: NEW: {x_v_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)]}.\n")
-            print(f"z_v_e_sol: NEW: {z_v_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(z_v_e, e[0], e)]}.\n")
-            print(f"x_v_e_sol: NEW: {x_w_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(x_w_e, e[1], e)]}.\n")
-            print(f"z_v_e_sol: NEW: {z_w_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)]}.\n")
-            print(f"y_e_sol:   NEW: {y_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(y_e, None, e)]}.\n")
+        print(f"x_v_e_sol: NEW: {x_v_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)]}.\n")
+        print(f"z_v_e_sol: NEW: {z_v_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(z_v_e, e[0], e)]}.\n")
+        print(f"x_v_e_sol: NEW: {x_w_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(x_w_e, e[1], e)]}.\n")
+        print(f"z_v_e_sol: NEW: {z_w_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)]}.\n")
+        print(f"y_e_sol:   NEW: {y_e_sol}. OLD: {z_global[consensus_manager.get_z_var_indices(y_e, None, e)]}.\n")
+        
+        # Update global values
+        z_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)] = x_v_e_sol
+        z_global[consensus_manager.get_z_var_indices(z_v_e, e[0], e)] = z_v_e_sol
+        z_global[consensus_manager.get_z_var_indices(x_w_e, e[1], e)] = x_w_e_sol
+        z_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)] = z_w_e_sol
+        z_global[consensus_manager.get_z_var_indices(y_e, None, e)] = y_e_sol
+        
+    else:
+        print("solve failed.")
+        print(f"{result.get_solution_result()}")
+        print(f"{result.GetInfeasibleConstraintNames(prog)}")
+        for constraint_binding in result.GetInfeasibleConstraints(prog):
+            print(f"{constraint_binding.variables()}")
             
-            # Build next z value set
-            z_updated[consensus_manager.get_z_var_indices(x_v_e, e[0], e)] = x_v_e_sol
-            z_updated[consensus_manager.get_z_var_indices(z_v_e, e[0], e)] = z_v_e_sol
-            z_updated[consensus_manager.get_z_var_indices(x_w_e, e[1], e)] = x_w_e_sol
-            z_updated[consensus_manager.get_z_var_indices(z_w_e, e[1], e)] = z_w_e_sol
-            z_updated[consensus_manager.get_z_var_indices(y_e, None, e)] = y_e_sol
-            
-        else:
-            print("solve failed.")
-            print(f"{result.get_solution_result()}")
-            print(f"{result.GetInfeasibleConstraintNames(prog)}")
-            for constraint_binding in result.GetInfeasibleConstraints(prog):
-                print(f"{constraint_binding.variables()}")
-                
-            # Reuse old z values
-            z_updated[consensus_manager.get_z_var_indices(x_v_e, e[0], e)] = z_global[consensus_manager.get_z_var_indices(x_v_e, e[0], e)]
-            z_updated[consensus_manager.get_z_var_indices(z_v_e, e[0], e)] = z_global[consensus_manager.get_z_var_indices(z_v_e, e[0], e)]
-            z_updated[consensus_manager.get_z_var_indices(x_w_e, e[1], e)] = z_global[consensus_manager.get_z_var_indices(x_w_e, e[1], e)]
-            z_updated[consensus_manager.get_z_var_indices(z_w_e, e[1], e)] = z_global[consensus_manager.get_z_var_indices(z_w_e, e[1], e)]
-            z_updated[consensus_manager.get_z_var_indices(y_e, None, e)] = z_global[consensus_manager.get_z_var_indices(y_e, None, e)]
-            
-    return z_updated, t_elapsed
+    return t_elapsed
             
 
 def dual_update():
@@ -592,6 +565,8 @@ z_v_e_seq = [z_global[consensus_manager.get_z_v_e_var_indices_in_z()]]
 y_e_seq = [z_global[consensus_manager.get_y_e_var_indices_in_z()]]
 mu_seq = [mu_global]
 
+prev_z_global = z_global.copy()
+
 rho_seq = [rho]
 pri_res_seq = [evaluate_primal_residual()]
 dual_res_seq = [evaluate_dual_residual(z_global)]
@@ -629,9 +604,11 @@ while it <= MAX_IT:
     ##############################
     ### Edge Updates
     ##############################
-    prev_z_global = z_global.copy()
-    z_global, edge_solve_time = parallel_edge_update(rho)
-    cumulative_solve_time += edge_solve_time
+    # prev_z_global = z_global.copy()
+    # z_global, edge_solve_time = parallel_edge_update(rho)
+    for e in E:
+        edge_solve_time = edge_update(rho, e)
+        cumulative_solve_time += edge_solve_time
 
     if not np.all(np.isfinite(z_global)):
         print("BREAKING FOR Divergence")
@@ -655,6 +632,7 @@ while it <= MAX_IT:
     # Compute primal and dual residuals
     pri_res_seq.append(evaluate_primal_residual())
     dual_res_seq.append(evaluate_dual_residual(prev_z_global))
+    prev_z_global = z_global.copy()
     
     # Update rho
     if  pri_res_seq[-1] >= nu * dual_res_seq[-1] and it < frac*MAX_IT:
