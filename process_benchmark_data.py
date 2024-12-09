@@ -40,7 +40,7 @@ algorithm_labels = {
     "v3": "Full Vertex Split"
 }
 colormap = matplotlib.colormaps['tab10']
-algorithm_colors = {alg: colormap(3*i) for i, alg in enumerate(algorithm_order)}  # 3*i to get some nice blue, red, pink
+algorithm_colors = {alg: colormap(3 * i) for i, alg in enumerate(algorithm_order)}  # 3*i to get distinct colors
 
 # Group data by benchmarks
 benchmarks = {}
@@ -49,7 +49,7 @@ for data_file_name, data in loaded_data.items():
     benchmark_name = data_file_name.rsplit('_', 1)[-1]
     if benchmark_name not in benchmarks:
         benchmarks[benchmark_name] = {}
-    benchmarks[benchmark_name][data_file_name] = data
+    benchmarks[benchmark_name][data_file_name] = data    
 
 # Generate Primal Residual & Dual Residual Plots
 for benchmark_name, algorithms_data in benchmarks.items():
@@ -57,7 +57,7 @@ for benchmark_name, algorithms_data in benchmarks.items():
     axs[0].set_title(f"Benchmark {benchmark_name}: Primal Residuals", fontsize=14)
     axs[1].set_title(f"Benchmark {benchmark_name}: Dual Residuals", fontsize=14)
     
-    for algorithm_key in algorithm_order:
+    for idx, algorithm_key in enumerate(algorithm_order):
         # Check if the algorithm exists in this benchmark
         matched_data = None
         for algorithm_name, data in algorithms_data.items():
@@ -68,15 +68,32 @@ for benchmark_name, algorithms_data in benchmarks.items():
         if matched_data and matched_data.get("ADMM"):  # Only plot if ADMM data is present
             pri_res_seq = matched_data.get("pri_res_seq", [])[1:]  # Skip the first residual value
             dual_res_seq = matched_data.get("dual_res_seq", [])[1:]  # Skip the first residual value
+            iterations = matched_data.get("iterations", len(pri_res_seq))  # Use provided iterations or sequence length
             
             label = algorithm_labels.get(algorithm_key, algorithm_key)
             color = algorithm_colors[algorithm_key]
             
+              # just offset blue line to make it look better
+            if algorithm_key == "v1":
+                offset = -0.5
+            else:
+                offset = 0
+            
             # Plot primal residuals
-            axs[0].plot(pri_res_seq, label=label, color=color)
+            line_pri, = axs[0].plot(pri_res_seq, label=label, color=color)
+            if len(pri_res_seq) > 0:
+                x_end_pri = len(pri_res_seq) - 1
+                y_end_pri = pri_res_seq[-1]
+                axs[0].text(x_end_pri, y_end_pri * (1 + offset), f"{iterations} iters", color=color, fontsize=10,
+            verticalalignment='bottom', horizontalalignment='left')
             
             # Plot dual residuals
-            axs[1].plot(dual_res_seq, label=label, color=color)
+            line_dual, = axs[1].plot(dual_res_seq, label=label, color=color)
+            if len(dual_res_seq) > 0:
+                x_end_dual = len(dual_res_seq) - 1
+                y_end_dual = dual_res_seq[-1]
+                axs[1].text(x_end_dual, y_end_dual * (1 + offset), f"{iterations} iters", color=color, fontsize=10,
+            verticalalignment='bottom', horizontalalignment='left')
 
     # Set log scale for both axes
     axs[0].set_yscale("log")
@@ -88,7 +105,7 @@ for benchmark_name, algorithms_data in benchmarks.items():
         ax.set_xlabel("Iterations", fontsize=12)
         ax.set_ylabel("Residual Value", fontsize=12)
         ax.grid(True, linestyle='--', alpha=0.6)
-
+    
     # Adjust layout and save the plot
     plt.tight_layout()
     plt.savefig(f"benchmark_data/plots/{benchmark_name}_residuals.png")
