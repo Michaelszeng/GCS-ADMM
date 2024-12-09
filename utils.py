@@ -98,7 +98,7 @@ def delta(v1, v2):
     return 0
 
 
-def visualize_results(As, bs, x_v, y_v, x_v_rounded=None, y_v_rounded=None, legend=False):
+def visualize_results(As, bs, x_v, y_v, x_v_rounded=None, y_v_rounded=None, legend=False, save_to_file=None):
     """
     Visualize 2D result of GCS piecewise-linear traj opt.
 
@@ -113,11 +113,11 @@ def visualize_results(As, bs, x_v, y_v, x_v_rounded=None, y_v_rounded=None, lege
     
     # Determine the number of subplots based on provided data
     if x_v_rounded is not None and y_v_rounded is not None:
-        fig, axs = plt.subplots(1, 2, figsize=(20, 10))
+        fig, axs = plt.subplots(1, 2, figsize=(16, 8))
         ax1, ax2 = axs
         show_second_plot = True
     else:
-        fig, ax1 = plt.subplots(figsize=(10, 10))
+        fig, ax1 = plt.subplots(figsize=(8, 8))
         show_second_plot = False
 
     # Define colors for polytopes
@@ -188,10 +188,13 @@ def visualize_results(As, bs, x_v, y_v, x_v_rounded=None, y_v_rounded=None, lege
     if show_second_plot:
         plot_data(ax2, x_v_rounded, y_v_rounded, title="Rounded Data")
 
-    plt.show()
+    if save_to_file:
+        plt.savefig(save_to_file)
+    else:
+        plt.show()
 
 
-def save_data(data_file, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded, ADMM=True, rho_seq=None, pri_res_seq=None, dual_res_seq=None):
+def save_data(data_file, As, bs, solve_time, cost, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded, ADMM=True, iterations=None, rho_seq=None, pri_res_seq=None, dual_res_seq=None):
     """
     Store the data from a test trial in a .pkl file for later use.
     
@@ -207,15 +210,20 @@ def save_data(data_file, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded, ADMM=True, 
         dual_res_seq: Sequence of dual residuals from ADMM.
     """
     all_data = {
-        'ADMM': ADMM,
+        'As': As,
+        'bs': bs,
+        'solve_time': solve_time,
+        'cost': cost,
         'x_v_sol': x_v_sol,
         'y_v_sol': y_v_sol,
         'x_v_rounded': x_v_rounded,
         'y_v_rounded': y_v_rounded,
+        'ADMM': ADMM,
     }
     
     # Add convergence data
     if ADMM:
+        all_data['iterations'] = iterations
         all_data['rho_seq'] = rho_seq
         all_data['pri_res_seq'] = pri_res_seq
         all_data['dual_res_seq'] = dual_res_seq

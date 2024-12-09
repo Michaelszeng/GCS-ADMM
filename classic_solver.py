@@ -21,7 +21,12 @@ DEFAULT_TEST_FILE = "benchmark2"
 # Parse command-line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--test_file", type=str, default=DEFAULT_TEST_FILE, help="The name of the test file (in `test_data` folder) to use (e.g., 'benchmark2').")
+parser.add_argument("--show_plot", type=str, default=True, help="Whether to display plot.")
 args = parser.parse_args()
+
+print("=======================================================================")
+print(f"Running Classic Solver on {args.test_file}")
+print("=======================================================================\n")
 
 # Dynamically import the specified test file
 current_folder = os.path.dirname(os.path.abspath(__file__))
@@ -80,7 +85,7 @@ for v in V:
 ################################################################################
 ##### Cost
 ################################################################################
-# Path length penalty: sum_{v ∈ V} ||z_v1 - z_v2||^2
+# Path length penalty: sum_{v ∈ V} ||z_v1 - z_v2||
 for v in V:
     z_v1 = z_v[v][:n]
     z_v2 = z_v[v][n:]
@@ -161,7 +166,8 @@ for v in V:
 print("Beginning MICP Solve.")
 start = time.time()
 result = Solve(prog)
-print(f"Solve Time: {time.time() - start}")
+solve_time = time.time() - start
+print(f"Solve Time: {solve_time}")
 print(f"Solved using: {result.get_solver_id().name()}")
 
 if result.is_success():
@@ -199,7 +205,8 @@ if result.is_success():
         for e in I_v_in[v] + I_v_out[v]:
             z_v_e_sol[(v, e)] = result.GetSolution(z_v_e[(v, e)])
     
-    print(f"Optimal Cost (Path Length): {result.get_optimal_cost()}\n")
+    cost = result.get_optimal_cost()
+    print(f"Optimal Cost Pre-rounding (Path Length): {cost}\n")
     print(f"{x_v_sol=}\n")
     print(f"{y_v_sol=}\n")
     print(f"{y_e_sol=}\n")
@@ -213,12 +220,14 @@ if result.is_success():
         
         print(f"{x_v_rounded=}\n")
         print(f"{y_v_rounded=}\n")
-    
-        visualize_results(As, bs, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded)
+
+        if args.show_plot == True:
+            visualize_results(As, bs, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded)
     else:
-        visualize_results(As, bs, x_v_sol, y_v_sol)
+        if args.show_plot == True:
+            visualize_results(As, bs, x_v_sol, y_v_sol)
         
-    save_data(f"benchmark_data/classic_solver_{args.test_file}.pkl", x_v_sol, y_v_sol, x_v_rounded, y_v_rounded, ADMM=False)
+    save_data(f"benchmark_data/classic_solver_{args.test_file}.pkl", As, bs, solve_time, cost, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded, ADMM=False)
     
 else:
     print("solve failed.")

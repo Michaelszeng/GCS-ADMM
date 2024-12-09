@@ -31,7 +31,12 @@ DEFAULT_TEST_FILE = "benchmark2"
 # Parse command-line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--test_file", type=str, default=DEFAULT_TEST_FILE, help="The name of the test file (in `test_data` folder) to use (e.g., 'benchmark2').")
+parser.add_argument("--show_plot", type=str, default=True, help="Whether to display plot.")
 args = parser.parse_args()
+
+print("=======================================================================")
+print(f"Running ADMM Solver v2 on {args.test_file}")
+print("=======================================================================\n")
 
 # Dynamically import the specified test file
 current_folder = os.path.dirname(os.path.abspath(__file__))
@@ -711,14 +716,15 @@ while it <= MAX_IT:
     if it % 100 == 0 or it == MAX_IT or opt:
     # if it == MAX_IT:
         print(f"it = {it}/{MAX_IT}, {pri_res_seq[-1]=}, {dual_res_seq[-1]=}")
-        fig, ax = plt.subplots(3)
-        ax[0].loglog(rho_seq)
-        ax[0].set_title("rho")
-        ax[1].loglog(pri_res_seq)
-        ax[1].set_title("pri_res")
-        ax[2].loglog(dual_res_seq)
-        ax[2].set_title("dual_res")
-        plt.show()
+        if args.show_plot == True:
+            fig, ax = plt.subplots(3)
+            ax[0].loglog(rho_seq)
+            ax[0].set_title("rho")
+            ax[1].loglog(pri_res_seq)
+            ax[1].set_title("pri_res")
+            ax[2].loglog(dual_res_seq)
+            ax[2].set_title("dual_res")
+            plt.show()
         
     if opt:
         print("BREAKING FOR OPT")
@@ -739,12 +745,16 @@ mu_seq = np.array(mu_seq)
 x_v_sol = {v: x_v_seq[-1][2*i*n : 2*(i+1)*n] for i, v in enumerate(V)}
 y_v_sol = {v: y_v_seq[-1][i] for i, v in enumerate(V)}
 y_e_e_sol = {e: y_e_e_seq[-1][i] for i, e in enumerate(E)}
+z_v_sol = {v: z_v_seq[-1][2*i*n : 2*(i+1)*n] for i, v in enumerate(V)}
+
+cost = compute_cost(z_v_sol, y_e_e_sol)
 
 print(f"x_v: {x_v_sol}")
 print(f"y_v: {y_v_sol}")
-print(f"y_e: {y_e_e_sol}")
+# print(f"y_e: {y_e_e_sol}")
 
 print(f"Total solve time: {cumulative_solve_time} s.")
+print(f"Cost before rounding: {cost}")
 
 final_cost, x_v_rounded, y_v_rounded = rounding(y_e_e_sol, V, E, I_v_out, As, bs, n)
         
@@ -755,10 +765,11 @@ print("===============================================================")
 print(f"{x_v_rounded=}\n")
 print(f"{y_v_rounded=}\n")
 
-visualize_results(As, bs, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded)
+if args.show_plot == True:
+    visualize_results(As, bs, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded)
 
 rho_seq = np.array(rho_seq)
 pri_res_seq = np.array(pri_res_seq)
 dual_res_seq = np.array(dual_res_seq)
 
-save_data(f"benchmark_data/classic_solver_{args.test_file}.pkl", x_v_sol, y_v_sol, x_v_rounded, y_v_rounded, True, rho_seq, pri_res_seq, dual_res_seq)
+save_data(f"benchmark_data/admm_solver_v3_{args.test_file}.pkl", As, bs, cumulative_solve_time, cost, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded, True, it, rho_seq, pri_res_seq, dual_res_seq)

@@ -179,3 +179,33 @@ def rounding(y_e_sol, V, E, I_v_out, As, bs, n, N=5, M=20, solve_convex_restrict
         return float('inf'), None, None
     best_cost, best_x_v_sol, best_y_v_sol = min(candidate_solutions, key=lambda x: x[0])
     return best_cost, best_x_v_sol, best_y_v_sol
+
+
+def compute_cost(z_v_sol, y_e_sol):
+    """
+    Computes the cost of the optimization problem given the values of z_v and y_e variables.
+
+    Parameters:
+    - z_v_sol (dict): Dictionary mapping each vertex v to its z_v values (2*n-dimensional numpy array).
+    - y_e_sol (dict): Dictionary mapping each edge e to its y_e value (float).
+
+    Returns:
+    - float: The computed cost based on the given variable values.
+    """
+    path_length_penalty = 0.0
+    edge_activation_penalty = 0.0
+
+    # Compute path length penalty: sum_{v ∈ V} ||z_v1 - z_v2||
+    for v, z_v in z_v_sol.items():
+        n = z_v.shape[0] // 2
+        z_v1 = z_v[:n]
+        z_v2 = z_v[n:]
+        path_length_penalty += np.linalg.norm(z_v1 - z_v2)
+
+    # Compute edge activation penalty: sum_{e ∈ E} 1e-4 * y_e
+    for e, y_e in y_e_sol.items():
+        edge_activation_penalty += 1e-4 * y_e
+
+    # Total cost
+    total_cost = path_length_penalty + edge_activation_penalty
+    return total_cost
