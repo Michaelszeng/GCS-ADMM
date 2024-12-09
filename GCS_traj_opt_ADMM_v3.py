@@ -20,12 +20,13 @@ import re
 
 np.set_printoptions(edgeitems=30, linewidth=250, precision=4, suppress=True)
 
+from GCS_utils import *
 from utils import *
 
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test4 import As, bs, n
+from test_autogen2 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -720,15 +721,24 @@ mu_seq = np.array(mu_seq)
 # Put most recent variables into dictionaries for rounding and visualization
 x_v_sol = {v: x_v_seq[-1][2*i*n : 2*(i+1)*n] for i, v in enumerate(V)}
 y_v_sol = {v: y_v_seq[-1][i] for i, v in enumerate(V)}
-y_e_v_sol = {e: y_e_v_seq[-1][i] for i, e in enumerate(E)}
+y_e_e_sol = {e: y_e_e_seq[-1][i] for i, e in enumerate(E)}
 
 print(f"x_v: {x_v_sol}")
 print(f"y_v: {y_v_sol}")
-print(f"y_e: {y_e_v_sol}")
+print(f"y_e: {y_e_e_sol}")
 
 print(f"Total solve time: {cumulative_solve_time} s.")
 
-visualize_results(As, bs, x_v_sol, y_v_sol)
+final_cost, x_v_rounded, y_v_rounded = rounding(y_e_e_sol, V, E, I_v_out, As, bs, n)
+        
+print("===============================================================")
+print("POST-ROUNDING")
+print("===============================================================")
+
+print(f"{x_v_rounded=}\n")
+print(f"{y_v_rounded=}\n")
+
+visualize_results(As, bs, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded)
 
 rho_seq = np.array(rho_seq)
 pri_res_seq = np.array(pri_res_seq)

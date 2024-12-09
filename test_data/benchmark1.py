@@ -1,5 +1,7 @@
 """
 2D, 4 squares
+
+BENCHMARK 1
 """
 
 import numpy as np
@@ -48,6 +50,10 @@ As = {"s": A_s, "t": A_t, 0: A1, 1: A2, 2: A3, 3: A4}
 bs = {"s": b_s, "t": b_t, 0: b1, 1: b2, 2: b3, 3: b4}
 
 n = A1.shape[1]
+
+# For rounding step: 
+N = 2
+M = 4
 
 # If file is run directly, visualize the GCS
 if __name__ == "__main__":

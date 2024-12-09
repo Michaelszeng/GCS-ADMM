@@ -20,7 +20,7 @@ def generate_test_2D(filename, x_low, x_high, y_low, y_high, resolution, num_set
     
     The resulting test is visualized and written to `filename`.
     """
-    def write_test_to_file(filename, As, bs, s, t):
+    def write_test_to_file(filename, As, bs, s, t, N, M):
         with open(filename, 'w') as f:
             # Write imports
             f.write("import numpy as np\n")
@@ -69,6 +69,10 @@ def generate_test_2D(filename, x_low, x_high, y_low, y_high, resolution, num_set
                 f.write(f"n = A{first_key}.shape[1]\n")
             else:
                 f.write("n = 0  # No polytopes defined\n\n\n")
+                
+            f.write("# For rounding step: \n")
+            f.write(f"N = {N}\n")
+            f.write(f"M = {M}\n\n")
                 
             f.write("# If file is run directly, visualize the GCS\n")
             f.write("if __name__ == \"__main__\":\n")
@@ -165,7 +169,7 @@ def generate_test_2D(filename, x_low, x_high, y_low, y_high, resolution, num_set
     
     visualize_results(As, bs, {**{i: 0 for i in range(seeds.shape[0])}, **{"s": x_s, "t": x_t}}, {**{i: 0 for i in range(seeds.shape[0])}, **{"s": 1, "t": 1}})
     
-    write_test_to_file(filename, As, bs, x_s[:2], x_t[:2])
+    write_test_to_file(filename, As, bs, x_s[:2], x_t[:2], int(num_sets/5), int(2*num_sets/5))
     
 
-generate_test_2D("test_data/test_autogen3.py", -5, 5, -5, 5, 0.1, 10)
+generate_test_2D("test_data/benchmark3.py", -40, 40, -40, 40, 0.8, 20)

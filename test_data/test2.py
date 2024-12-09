@@ -36,6 +36,10 @@ bs = {"s": b_s, "t": b_t, 0: b1, 1: b2}
 
 n = A1.shape[1]
 
+# For rounding step: 
+N = 1
+M = 1
+
 # If file is run directly, visualize the GCS
 if __name__ == "__main__":
     visualize_results(As, bs, {**{i: 0 for i in range(len(As)-2)}, **{"s": np.hstack([s,s]), "t": np.hstack([t,t])}}, {**{i: 0 for i in range(len(As)-2)}, **{"s": 1, "t": 1}})

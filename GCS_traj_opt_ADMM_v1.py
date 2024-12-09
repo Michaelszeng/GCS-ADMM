@@ -17,6 +17,7 @@ import re
 
 np.set_printoptions(edgeitems=30, linewidth=250, precision=4, suppress=True)
 
+from GCS_utils import *
 from utils import *
 
 current_folder = os.path.dirname(os.path.abspath(__file__))
@@ -681,7 +682,16 @@ print(f"y_e: {y_e_sol}")
 
 print(f"Total solve time: {cumulative_solve_time} s.")
 
-visualize_results(As, bs, x_v_sol, y_v_sol)
+final_cost, x_v_rounded, y_v_rounded = rounding(y_e_sol, V, E, I_v_out, As, bs, n)
+        
+print("===============================================================")
+print("POST-ROUNDING")
+print("===============================================================")
+
+print(f"{x_v_rounded=}\n")
+print(f"{y_v_rounded=}\n")
+
+visualize_results(As, bs, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded)
 
 rho_seq = np.array(rho_seq)
 pri_res_seq = np.array(pri_res_seq)
