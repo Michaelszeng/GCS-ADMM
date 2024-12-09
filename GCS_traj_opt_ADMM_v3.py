@@ -25,7 +25,7 @@ from utils import *
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test3 import As, bs, n
+from test4 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -350,7 +350,8 @@ def vertex_update(rho, v):
         z_e_u_v[(e, e[1])] = prog.NewContinuousVariables(2 * n, f'z_{e}_{e[1]}_v')
 
     for e in I_v_in[v] + I_v_out[v]:
-        y_e_v[e] = prog.NewBinaryVariables(1, f'y_{e}_v')[0]
+        y_e_v[e] = prog.NewContinuousVariables(1, f'y_{e}_v')[0]  # Relax y_e_v to 0 <= y_v <= 1
+        prog.AddBoundingBoxConstraint(0, 1, y_e_v[e])
         
     # Path Length Penalty: ||z_v1 - z_v2||^2
     z_v1 = z_v[:n]
@@ -384,8 +385,8 @@ def vertex_update(rho, v):
     # print(f"B.shape: {B.shape}")
     # print(f"z_global.shape: {z_global.shape}")
     # print(f"c.shape: {c.shape}")
-    # residual = A_fixed @ x_fixed + A_var @ x_var + B @ z_global - c
-    residual = A_var @ x_var + B @ z_global - c  # NOTE: DOES NOT SEEM TO MATTER WHETHER WE INCLUDE A_fixed @ x_fixed OR NOT
+    residual = A_fixed @ x_fixed + A_var @ x_var + B @ z_global - c
+    # residual = A_var @ x_var + B @ z_global - c  # NOTE: DOES NOT SEEM TO MATTER WHETHER WE INCLUDE A_fixed @ x_fixed OR NOT
     prog.AddCost((rho/2) * (residual + mu_global).T @ (residual + mu_global))
     
     # Point Containment Constraints
@@ -540,7 +541,8 @@ def edge_update(rho, e):
 
 def parallel_edge_update(rho):
     """
-    Solve edge updates "in parallel". 
+    Solve edge updates "in parallel". Except it's so trivial it's probably not
+    worth parallelizing.
     
     Args:
         rho: scalar penalty parameter.
@@ -623,7 +625,7 @@ eps_abs = 1e-4
 eps_rel = 1e-3
 
 it = 1
-MAX_IT = 200
+MAX_IT = 300
 
 cumulative_solve_time = 0
 

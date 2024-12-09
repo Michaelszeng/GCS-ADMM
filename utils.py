@@ -97,7 +97,7 @@ def delta(v1, v2):
     return 0
 
 
-def visualize_results(As, bs, x_v, y_v):
+def visualize_results(As, bs, x_v, y_v, x_v_rounded=None, y_v_rounded=None):
     """
     Visualize 2D result of GCS piecewise-linear traj opt.
 
@@ -106,9 +106,18 @@ def visualize_results(As, bs, x_v, y_v):
         bs: `bs` dictionary from the test case definition.
         x_v: value of `x_v` dictionary from GCS MICP solution.
         y_v: value of `y_v` dictionary from GCS MICP solution.
+        x_v_rounded: optional rounded x_v values for comparison.
+        y_v_rounded: optional rounded y_v values for comparison.
     """
     
-    fig, ax = plt.subplots(figsize=(10, 10))
+    # Determine the number of subplots based on provided data
+    if x_v_rounded is not None and y_v_rounded is not None:
+        fig, axs = plt.subplots(1, 2, figsize=(20, 10))
+        ax1, ax2 = axs
+        show_second_plot = True
+    else:
+        fig, ax1 = plt.subplots(figsize=(10, 10))
+        show_second_plot = False
 
     # Define colors for polytopes
     colors = plt.cm.tab10(np.linspace(0, 1, len(As)))
@@ -117,66 +126,64 @@ def visualize_results(As, bs, x_v, y_v):
     x_min, x_max = float('inf'), float('-inf')
     y_min, y_max = float('inf'), float('-inf')
 
-    for idx, (key, A) in enumerate(As.items()):
-        b = bs[key]
-        
-        # Generate vertices of the polytope
-        vertices = []
-        for i in range(A.shape[0]):
-            for j in range(i + 1, A.shape[0]):
-                # Solve for intersection points
-                try:
-                    point = np.linalg.solve(A[[i, j]], b[[i, j]])
-                    if np.all(A @ point <= b + 1e-6):  # Check if the point is inside the polytope
-                        vertices.append(point)
-                except np.linalg.LinAlgError:
-                    continue
+    # Helper function to plot the polytopes and lines
+    def plot_data(ax, x_v, y_v, title):
+        for idx, (key, A) in enumerate(As.items()):
+            b = bs[key]
+            
+            # Generate vertices of the polytope
+            vertices = []
+            for i in range(A.shape[0]):
+                for j in range(i + 1, A.shape[0]):
+                    try:
+                        point = np.linalg.solve(A[[i, j]], b[[i, j]])
+                        if np.all(A @ point <= b + 1e-6):
+                            vertices.append(point)
+                    except np.linalg.LinAlgError:
+                        continue
 
-        # Sort vertices in counterclockwise order
-        if vertices:
-            vertices = np.array(vertices)
-            mean = np.mean(vertices, axis=0)
-            angles = np.arctan2(vertices[:, 1] - mean[1], vertices[:, 0] - mean[0])
-            vertices = vertices[np.argsort(angles)]
+            if vertices:
+                vertices = np.array(vertices)
+                mean = np.mean(vertices, axis=0)
+                angles = np.arctan2(vertices[:, 1] - mean[1], vertices[:, 0] - mean[0])
+                vertices = vertices[np.argsort(angles)]
 
-            # Add polytope as a polygon with a label for the legend
-            if key != 's' and key != 't':
-                polygon = Polygon(vertices, closed=True, alpha=0.4, color=colors[idx], label=f'Polytope {key}')
-                ax.add_patch(polygon)
+                if key != 's' and key != 't':
+                    polygon = Polygon(vertices, closed=True, alpha=0.3, color=colors[idx], label=f'Polytope {key}')
+                    ax.add_patch(polygon)
 
-            # Update bounds
-            x_min = min(x_min, vertices[:, 0].min())
-            x_max = max(x_max, vertices[:, 0].max())
-            y_min = min(y_min, vertices[:, 1].min())
-            y_max = max(y_max, vertices[:, 1].max())
+                nonlocal x_min, x_max, y_min, y_max
+                x_min = min(x_min, vertices[:, 0].min())
+                x_max = max(x_max, vertices[:, 0].max())
+                y_min = min(y_min, vertices[:, 1].min())
+                y_max = max(y_max, vertices[:, 1].max())
 
-        # Plot points and line segments based on y_v
-        if key in x_v and key in y_v:
-            # Plot points if y_v[key] > 0.5
-            if y_v[key] > 0.5:
-                points = x_v[key].reshape(2, 2)  # Reshape to two points
-                
-                # Plot points without labels to avoid multiple legend entries
-                ax.plot(points[:, 0], points[:, 1], 'o', color=colors[idx])
-                
-                # Draw line segment connecting the two points
-                ax.plot(points[:, 0], points[:, 1], '-', color=colors[idx])
+            if key in x_v and key in y_v:
+                if y_v[key] > 0.5:
+                    points = x_v[key].reshape(2, 2)
+                    ax.plot(points[:, 0], points[:, 1], 'o', color=colors[idx])
+                    ax.plot(points[:, 0], points[:, 1], '-', color=colors[idx])
 
-                # Update bounds
-                x_min = min(x_min, points[:, 0].min())
-                x_max = max(x_max, points[:, 0].max())
-                y_min = min(y_min, points[:, 1].min())
-                y_max = max(y_max, points[:, 1].max())
+                    x_min = min(x_min, points[:, 0].min())
+                    x_max = max(x_max, points[:, 0].max())
+                    y_min = min(y_min, points[:, 1].min())
+                    y_max = max(y_max, points[:, 1].max())
 
-    # Configure plot limits to ensure visibility of all objects
-    padding = 0.1 * max(x_max - x_min, y_max - y_min)
-    ax.set_xlim(x_min - padding, x_max + padding)
-    ax.set_ylim(y_min - padding, y_max + padding)
-    ax.set_aspect('equal', adjustable='datalim')
-    
-    # Create a unique legend based on the polygon labels
-    handles, labels = ax.get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    ax.legend(by_label.values(), by_label.keys())
-    
+        padding = 0.1 * max(x_max - x_min, y_max - y_min)
+        ax.set_xlim(x_min - padding, x_max + padding)
+        ax.set_ylim(y_min - padding, y_max + padding)
+        ax.set_aspect('equal', adjustable='datalim')
+        ax.set_title(title)
+
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax.legend(by_label.values(), by_label.keys())
+
+    # Plot original data
+    plot_data(ax1, x_v, y_v, title="Original Data")
+
+    # Plot rounded data if provided
+    if show_second_plot:
+        plot_data(ax2, x_v_rounded, y_v_rounded, title="Rounded Data")
+
     plt.show()

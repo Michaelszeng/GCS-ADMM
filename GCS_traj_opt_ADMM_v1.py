@@ -22,7 +22,7 @@ from utils import *
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test3 import As, bs, n
+from test4 import As, bs, n
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -675,9 +675,9 @@ x_v_sol = {v: x_v_seq[-1][2*i*n : 2*(i+1)*n] for i, v in enumerate(V)}
 y_v_sol = {v: y_v_seq[-1][i] for i, v in enumerate(V)}
 y_e_sol = {e: y_e_seq[-1][i] for i, e in enumerate(E)}
 
-print(f"x_v: {x_v_seq[-1]}")
-print(f"y_v: {y_v_seq[-1]}")
-print(f"y_e: {y_e_seq[-1]}")
+print(f"x_v: {x_v_sol}")
+print(f"y_v: {y_v_sol}")
+print(f"y_e: {y_e_sol}")
 
 print(f"Total solve time: {cumulative_solve_time} s.")
 
