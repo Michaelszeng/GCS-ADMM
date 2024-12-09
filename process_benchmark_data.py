@@ -1,5 +1,6 @@
 import os
 import pickle
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
 
@@ -178,4 +179,71 @@ plt.grid(True, linestyle='--', alpha=0.6)
 # Save and show plot
 plt.tight_layout()
 plt.savefig("benchmark_data/plots/solve_times_across_benchmarks.png")
+plt.close()
+
+
+################################################################################
+##### Table for Cost Comparison
+################################################################################
+# Prepare data for the table
+benchmark_ids = sorted(benchmarks.keys(), key=lambda x: int(x[-1]))  # Sort benchmarks numerically by ID
+table_data = {alg: [] for alg in algorithm_order}  # Initialize data for each algorithm
+
+# Collect costs for each algorithm across benchmarks
+for benchmark_id in benchmark_ids:
+    algorithms_data = benchmarks[benchmark_id]
+    for algorithm_key in algorithm_order:
+        # Match algorithm key to data
+        matched_data = None
+        for algorithm_name, data in algorithms_data.items():
+            if algorithm_key in algorithm_name:
+                matched_data = data
+                break
+        
+        if matched_data:
+            table_data[algorithm_key].append(matched_data.get("cost", None))  # Append cost
+        else:
+            table_data[algorithm_key].append(None)  # Append None if no data for the algorithm
+
+# Create a DataFrame for the table
+table_df = pd.DataFrame(table_data, index=benchmark_ids)
+
+# Rename columns to use algorithm labels
+table_df.rename(columns=algorithm_labels, inplace=True)
+
+# Rename the index to be more descriptive
+table_df.index.name = "Benchmark"
+
+# Truncate numbers to 3 decimal places
+table_df = table_df.round(3)
+
+# Plot the table as an image
+fig, ax = plt.subplots(figsize=(10, len(table_df) * 0.6))  # Adjust figure size based on rows
+ax.axis('tight')
+ax.axis('off')
+
+# Render the table
+table = ax.table(cellText=table_df.values,
+                 colLabels=table_df.columns,
+                 rowLabels=table_df.index,
+                 loc='center',
+                 cellLoc='center',
+                 colLoc='center')
+
+# Apply styling
+table.auto_set_font_size(False)
+table.set_fontsize(12)
+table.scale(1.2, 1.2)  # Scale up the table for better readability
+
+# Add custom styling to header cells
+for (row, col), cell in table.get_celld().items():
+    if row == 0 or col == -1:  # Header cells
+        cell.set_text_props(weight='bold', color='white')
+        cell.set_facecolor('#630101')  # Green for headers
+    else:
+        cell.set_facecolor('#F8F8F8')  # Light gray for other cells
+    cell.set_edgecolor('black')  # Add borders
+
+# Save the table as an image
+plt.savefig("benchmark_data/plots/cost_table.png", dpi=300, bbox_inches='tight')
 plt.close()
