@@ -35,7 +35,7 @@ parser.add_argument("--show_plot", type=str, default=True, help="Whether to disp
 args = parser.parse_args()
 
 print("=======================================================================")
-print(f"Running ADMM Solver v2 on {args.test_file}")
+print(f"Running ADMM Solver v3 on {args.test_file}")
 print("=======================================================================\n")
 
 # Dynamically import the specified test file

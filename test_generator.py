@@ -13,7 +13,7 @@ from scipy.stats.qmc import LatinHypercube
 from utils import *
 
 
-def generate_test_2D(filename, low_bound, high_bound, resolution, num_sets):
+def generate_test_2D(filename, low_bound, high_bound, resolution, spacing_factor, num_sets):
     """
     Fairly overcomplicated function to generate test examples for 2D GCS traj 
     opt problems.
@@ -110,7 +110,7 @@ def generate_test_2D(filename, low_bound, high_bound, resolution, num_sets):
     distances = spatial.distance.cdist(seeds, seeds)
     distances[distances == 0] = np.inf
 
-    seed_radius = np.min(distances, axis=1)
+    seed_radius = np.min(distances, axis=1)*spacing_factor
     hpolyhedrons = []
     As = dict()
     bs = dict()
@@ -127,7 +127,7 @@ def generate_test_2D(filename, low_bound, high_bound, resolution, num_sets):
         ]
         vpoly = None
         while close_points.shape[0] < 3 or vpoly is None:
-            radius *= 1.1
+            radius *= 1.05
             close_points = grid_points[local_distances <= radius]
             potential_vertices = close_points[
                 np.random.choice(
@@ -171,4 +171,4 @@ def generate_test_2D(filename, low_bound, high_bound, resolution, num_sets):
     write_test_to_file(filename, As, bs, x_s[:2], x_t[:2], int(num_sets/5), int(2*num_sets/5))
 
     
-generate_test_2D("test_data/benchmark4.py", -60, 60, 4, 40)
+generate_test_2D("test_data/benchmark6.py", -20, 20, 1, 0.9, 40)

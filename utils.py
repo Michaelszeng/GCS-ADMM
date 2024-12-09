@@ -188,7 +188,7 @@ def visualize_results(As, bs, x_v, y_v, x_v_rounded=None, y_v_rounded=None, lege
     if show_second_plot:
         plot_data(ax2, x_v_rounded, y_v_rounded, title="Rounded Data")
 
-    if save_to_file:
+    if save_to_file is not None:
         plt.savefig(save_to_file)
     else:
         plt.show()
