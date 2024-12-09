@@ -4,6 +4,7 @@ from pydrake.all import (
 )
 
 import numpy as np
+import pickle
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 
@@ -97,7 +98,7 @@ def delta(v1, v2):
     return 0
 
 
-def visualize_results(As, bs, x_v, y_v, x_v_rounded=None, y_v_rounded=None):
+def visualize_results(As, bs, x_v, y_v, x_v_rounded=None, y_v_rounded=None, legend=False):
     """
     Visualize 2D result of GCS piecewise-linear traj opt.
 
@@ -175,9 +176,10 @@ def visualize_results(As, bs, x_v, y_v, x_v_rounded=None, y_v_rounded=None):
         ax.set_aspect('equal', adjustable='datalim')
         ax.set_title(title)
 
-        handles, labels = ax.get_legend_handles_labels()
-        by_label = dict(zip(labels, handles))
-        ax.legend(by_label.values(), by_label.keys())
+        if legend:
+            handles, labels = ax.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax.legend(by_label.values(), by_label.keys())
 
     # Plot original data
     plot_data(ax1, x_v, y_v, title="Original Data")
@@ -187,3 +189,37 @@ def visualize_results(As, bs, x_v, y_v, x_v_rounded=None, y_v_rounded=None):
         plot_data(ax2, x_v_rounded, y_v_rounded, title="Rounded Data")
 
     plt.show()
+
+
+def save_data(data_file, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded, ADMM=True, rho_seq=None, pri_res_seq=None, dual_res_seq=None):
+    """
+    Store the data from a test trial in a .pkl file for later use.
+    
+    Args:
+        data_file (str): Path to the .pkl file.
+        x_v_sol: Solution to x_v from GCS.
+        y_v_sol: Solution to y_v from GCS.
+        x_v_rounded: Rounded solution to x_v from GCS.
+        y_v_rounded: Rounded solution to y_v from GCS.
+        ADMM (bool): Whether the data includes ADMM convergence data.
+        rho_seq: Sequence of rho values from ADMM.
+        pri_res_seq: Sequence of primal residuals from ADMM.
+        dual_res_seq: Sequence of dual residuals from ADMM.
+    """
+    all_data = {
+        'ADMM': ADMM,
+        'x_v_sol': x_v_sol,
+        'y_v_sol': y_v_sol,
+        'x_v_rounded': x_v_rounded,
+        'y_v_rounded': y_v_rounded,
+    }
+    
+    # Add convergence data
+    if ADMM:
+        all_data['rho_seq'] = rho_seq
+        all_data['pri_res_seq'] = pri_res_seq
+        all_data['dual_res_seq'] = dual_res_seq
+        
+    # Save to a .pkl file
+    with open(data_file, 'wb') as f:
+        pickle.dump(all_data, f)

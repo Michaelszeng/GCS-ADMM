@@ -13,16 +13,33 @@ import pandas as pd
 import sys
 import os
 import time
+import argparse
+import importlib
 
 np.set_printoptions(edgeitems=30, linewidth=250, precision=4, suppress=True)
 
 from GCS_utils import *
 from utils import *
 
+# if you do not include command line argument for test file
+DEFAULT_TEST_FILE = "benchmark2"
+
+# Parse command-line arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--test_file", type=str, default=DEFAULT_TEST_FILE, help="The name of the test file (in `test_data` folder) to use (e.g., 'benchmark2').")
+args = parser.parse_args()
+
+# Dynamically import the specified test file
 current_folder = os.path.dirname(os.path.abspath(__file__))
 test_data_path = os.path.join(current_folder, "test_data")
 sys.path.append(test_data_path)
-from test4 import As, bs, n
+
+try:
+    test_module = importlib.import_module(args.test_file)
+    As, bs, n = test_module.As, test_module.bs, test_module.n
+except ModuleNotFoundError:
+    print(f"Error: Test file '{args.test_file}' not found in {test_data_path}.")
+    sys.exit(1)
 
 V, E, I_v_in, I_v_out = build_graph(As, bs)
 print(f"V: {V}")
@@ -692,3 +709,5 @@ visualize_results(As, bs, x_v_sol, y_v_sol, x_v_rounded, y_v_rounded)
 rho_seq = np.array(rho_seq)
 pri_res_seq = np.array(pri_res_seq)
 dual_res_seq = np.array(dual_res_seq)
+
+save_data(f"benchmark_data/classic_solver_{args.test_file}.pkl", x_v_sol, y_v_sol, x_v_rounded, y_v_rounded, True, rho_seq, pri_res_seq, dual_res_seq)

@@ -13,7 +13,7 @@ from scipy.stats.qmc import LatinHypercube
 from utils import *
 
 
-def generate_test_2D(filename, x_low, x_high, y_low, y_high, resolution, num_sets):
+def generate_test_2D(filename, low_bound, high_bound, resolution, num_sets):
     """
     Fairly overcomplicated function to generate test examples for 2D GCS traj 
     opt problems.
@@ -77,7 +77,6 @@ def generate_test_2D(filename, x_low, x_high, y_low, y_high, resolution, num_set
             f.write("# If file is run directly, visualize the GCS\n")
             f.write("if __name__ == \"__main__\":\n")
             f.write("   visualize_results(As, bs, {**{i: 0 for i in range(len(As)-2)}, **{\"s\": np.hstack([s,s]), \"t\": np.hstack([t,t])}}, {**{i: 0 for i in range(len(As)-2)}, **{\"s\": 1, \"t\": 1}})")
-    
         
     def generate_random_point_in_hpoly(hpolyhedron):
         """
@@ -90,24 +89,24 @@ def generate_test_2D(filename, x_low, x_high, y_low, y_high, resolution, num_set
         # Sample a random point within the bounds defined by A * x <= b
         # For simplicity, using rejection sampling
         while True:
-            candidate_point = np.random.uniform(-10, 10, size=dim)  # Adjust range as needed
+            candidate_point = np.random.uniform(low_bound, high_bound, size=dim)  # Adjust range as needed
             if np.all(A @ candidate_point <= b):
                 return candidate_point
             
-    grid_x_size = int((x_high - x_low) / resolution)
-    grid_y_size = int((y_high - y_low) / resolution)
-    x = np.linspace(x_low, x_high, grid_x_size)
-    y = np.linspace(y_low, y_high, grid_y_size)
+    grid_x_size = int((high_bound - low_bound) / resolution)
+    grid_y_size = int((high_bound - low_bound) / resolution)
+    x = np.linspace(low_bound, high_bound, grid_x_size)
+    y = np.linspace(low_bound, high_bound, grid_y_size)
     X, Y = np.meshgrid(x, y)
     grid_points = np.vstack((X.flatten(), Y.flatten())).T
-
-    # Randomly select seed points for regions
+    
+    # Randomly select seed points for regions    
     seed_indices = np.random.choice(len(grid_points), num_sets, replace=False)
     seeds = grid_points[seed_indices]
     lhs = LatinHypercube(d=2, optimization="lloyd")
     seeds = lhs.random(n=num_sets)
-    seeds[:,0] = (x_high - x_low) * seeds[:,0] + x_low
-    seeds[:,1] = (y_high - y_low) * seeds[:,1] + y_low
+    seeds[:,0] = (high_bound - low_bound) * seeds[:,0] + low_bound
+    seeds[:,1] = (high_bound - low_bound) * seeds[:,1] + low_bound
     distances = spatial.distance.cdist(seeds, seeds)
     distances[distances == 0] = np.inf
 
@@ -170,6 +169,6 @@ def generate_test_2D(filename, x_low, x_high, y_low, y_high, resolution, num_set
     visualize_results(As, bs, {**{i: 0 for i in range(seeds.shape[0])}, **{"s": x_s, "t": x_t}}, {**{i: 0 for i in range(seeds.shape[0])}, **{"s": 1, "t": 1}})
     
     write_test_to_file(filename, As, bs, x_s[:2], x_t[:2], int(num_sets/5), int(2*num_sets/5))
-    
 
-generate_test_2D("test_data/benchmark3.py", -40, 40, -40, 40, 0.8, 20)
+    
+generate_test_2D("test_data/benchmark4.py", -60, 60, 4, 40)
