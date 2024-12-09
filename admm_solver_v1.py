@@ -603,7 +603,7 @@ eps_abs = 1e-4
 eps_rel = 1e-3
 
 it = 1
-MAX_IT = 400
+MAX_IT = 1000
 
 cumulative_solve_time = 0
 
