@@ -32,9 +32,18 @@ for data_file_name, data in loaded_data.items():
 ################################################################################
 ##### Plot Primal & Dual Residuals
 ################################################################################
+# Predefined order and colors for algorithms
+algorithm_order = ["v1", "v2", "v3"]  # Adjust based on your naming conventions
+algorithm_labels = {
+    "v1": "Vertex-Edge Split 1",
+    "v2": "Vertex-Edge Split 2",
+    "v3": "Full Vertex Split"
+}
+colormap = matplotlib.colormaps['tab10']
+algorithm_colors = {alg: colormap(3*i) for i, alg in enumerate(algorithm_order)}  # 3*i to get some nice blue, red, pink
+
 # Group data by benchmarks
 benchmarks = {}
-solve_times = {}
 for data_file_name, data in loaded_data.items():
     # Extract benchmark identifier (assuming format "<algorithm_name>_benchmark<i>")
     benchmark_name = data_file_name.rsplit('_', 1)[-1]
@@ -43,36 +52,31 @@ for data_file_name, data in loaded_data.items():
     benchmarks[benchmark_name][data_file_name] = data
 
 # Generate Primal Residual & Dual Residual Plots
-colormap = matplotlib.colormaps['tab10']  # Updated API for colormap access
 for benchmark_name, algorithms_data in benchmarks.items():
     fig, axs = plt.subplots(2, 1, figsize=(7, 5), sharex=True)
     axs[0].set_title(f"Benchmark {benchmark_name}: Primal Residuals", fontsize=14)
     axs[1].set_title(f"Benchmark {benchmark_name}: Dual Residuals", fontsize=14)
     
-    # Cycle through colors for each algorithm
-    color_idx = 3  # start with red
-    
-    for algorithm_name, data in algorithms_data.items():
-        if data.get("ADMM"):  # Only plot if ADMM data is present
-            pri_res_seq = data.get("pri_res_seq", [])[1:]  # Skip the first residual value (initialization)
-            dual_res_seq = data.get("dual_res_seq", [])[1:]  # Skip the first residual value (initialization)
+    for algorithm_key in algorithm_order:
+        # Check if the algorithm exists in this benchmark
+        matched_data = None
+        for algorithm_name, data in algorithms_data.items():
+            if algorithm_key in algorithm_name:
+                matched_data = data
+                break
+        
+        if matched_data and matched_data.get("ADMM"):  # Only plot if ADMM data is present
+            pri_res_seq = matched_data.get("pri_res_seq", [])[1:]  # Skip the first residual value
+            dual_res_seq = matched_data.get("dual_res_seq", [])[1:]  # Skip the first residual value
             
-            # Assign a color from the colormap
-            color = colormap(color_idx % len(colormap.colors))
-            color_idx += 1
+            label = algorithm_labels.get(algorithm_key, algorithm_key)
+            color = algorithm_colors[algorithm_key]
             
-            # Plot primal residuals on a log scale
-            if "v1" in algorithm_name:
-                algorithm_name = "vertex-edge split 1"
-            elif "v2" in algorithm_name:
-                algorithm_name = "vertex-edge split 2"
-            elif "v3" in algorithm_name:
-                algorithm_name = "full vertex split"
+            # Plot primal residuals
+            axs[0].plot(pri_res_seq, label=label, color=color)
             
-            axs[0].plot(pri_res_seq, label=f"{algorithm_name}", color=color)
-            
-            # Plot dual residuals on a log scale
-            axs[1].plot(dual_res_seq, label=f"{algorithm_name}", color=color)
+            # Plot dual residuals
+            axs[1].plot(dual_res_seq, label=label, color=color)
 
     # Set log scale for both axes
     axs[0].set_yscale("log")
@@ -94,39 +98,67 @@ for benchmark_name, algorithms_data in benchmarks.items():
 ################################################################################
 ##### Plot Solve Times
 ################################################################################
+# Predefined order and colors for algorithms
+algorithm_order = ["classic", "v1", "v2", "v3"]  # Adjust based on your naming conventions
+algorithm_labels = {
+    "classic": "Commercial Solver",
+    "v1": "Vertex-Edge Split 1",
+    "v2": "Vertex-Edge Split 2",
+    "v3": "Full Vertex Split"
+}
+colormap = matplotlib.colormaps['tab10']
+algorithm_colors = {alg: colormap(3*(i-1)) for i, alg in enumerate(algorithm_order)}  # 3*i to get some nice blue, red, pink, (i-1) so that classic gets a different color
+algorithm_colors["classic"] = colormap(1)  # Set classic solver color]
+
+# Prepare data for solve time plot
+benchmark_ids = sorted(benchmarks.keys(), key=lambda x: int(x[-1]))  # Sort benchmarks numerically by ID
+solve_times = {alg: [] for alg in algorithm_order}  # Initialize solve time data for each algorithm
+
 # Collect solve times for each algorithm across benchmarks
-solve_times = {}
-benchmarks_list = sorted(benchmarks.keys(), key=lambda x: int(x.strip('benchmark')))
-benchmarks_list = ["benchmark1"]  # TEMPORARY
+for benchmark_id in benchmark_ids:
+    algorithms_data = benchmarks[benchmark_id]
+    for algorithm_key in algorithm_order:
+        # Match algorithm key to data
+        matched_data = None
+        for algorithm_name, data in algorithms_data.items():
+            if algorithm_key in algorithm_name:  # Match algorithm_key to its corresponding data
+                matched_data = data
+                break
+        
+        if matched_data:
+            solve_times[algorithm_key].append(matched_data.get("solve_time", None))
+        else:
+            solve_times[algorithm_key].append(None)  # Fill with None if no data for the algorithm
 
-for benchmark_name, algorithms_data in benchmarks.items():
-    for algorithm_name, data in algorithms_data.items():
-        if algorithm_name not in solve_times:
-            solve_times[algorithm_name] = []
-        solve_times[algorithm_name].append(data.get("solve_time", None))
+# Define custom labels for x-axis
+custom_labels = ["4 Vertices", "8 Vertices", "20 Vertices", "40 Vertices"]
 
-# Create the plot
-fig, ax = plt.subplots(figsize=(8, 5))
+# Plot solve times
+plt.figure(figsize=(8, 4))
+x_positions = range(1, len(benchmark_ids) + 1)  # Benchmarks as x-axis positions
 
-colormap = plt.cm.tab10
-colors = [colormap(i) for i in range(len(solve_times))]
+for algorithm_key in algorithm_order:
+    y_values = solve_times[algorithm_key]
+    label = algorithm_labels.get(algorithm_key, algorithm_key)
+    color = algorithm_colors[algorithm_key]
+    
+    # Mask None values to avoid plotting gaps
+    mask = [v is not None for v in y_values]
+    x_vals = np.array(x_positions)[mask]
+    y_vals = np.array(y_values)[mask]
+    
+    plt.plot(x_vals, y_vals, label=label, color=color, marker='o', linestyle='-')
 
-# Plot solve times for each algorithm
-for i, (algorithm_name, times) in enumerate(solve_times.items()):
-    # Ensure times are in the correct order of benchmarks
-    times = [times[benchmarks_list.index(f"benchmark{j+1}")] for j in range(len(benchmarks_list))]
-    ax.plot(benchmarks_list, times, marker='o', label=algorithm_name, color=colors[i])
+# Customize plot
+plt.title("Solve Times versus Problem Size", fontsize=16)
+plt.xlabel("Problem Size (# Vertices in GCS)", fontsize=14)
+plt.ylabel("Solve Time (s)", fontsize=14)
+plt.yscale("log")
+plt.xticks(ticks=x_positions, labels=custom_labels, fontsize=12)  # Use custom labels
+plt.legend(fontsize=12)
+plt.grid(True, linestyle='--', alpha=0.6)
 
-# Add labels, legend, and grid
-ax.set_title("Solve Times Across Benchmarks", fontsize=16)
-ax.set_xlabel("Benchmarks", fontsize=14)
-ax.set_ylabel("Solve Time (s)", fontsize=14)
-ax.set_xticks(benchmarks_list)
-ax.set_xticklabels([f"Benchmark {i+1}" for i in range(len(benchmarks_list))])
-ax.legend(fontsize=12, title="Algorithms")
-ax.grid(True, linestyle='--', alpha=0.6)
-
-# Adjust layout and save the plot
+# Save and show plot
 plt.tight_layout()
 plt.savefig("benchmark_data/plots/solve_times_across_benchmarks.png")
 plt.close()
