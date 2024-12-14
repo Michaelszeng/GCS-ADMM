@@ -55,8 +55,8 @@ for data_file_name, data in loaded_data.items():
 # Generate Primal Residual & Dual Residual Plots
 for benchmark_name, algorithms_data in benchmarks.items():
     fig, axs = plt.subplots(2, 1, figsize=(7, 5), sharex=True)
-    axs[0].set_title(f"Benchmark {benchmark_name}: Primal Residuals", fontsize=14)
-    axs[1].set_title(f"Benchmark {benchmark_name}: Dual Residuals", fontsize=14)
+    axs[0].set_title(f"Benchmark {benchmark_name[-1]}: Primal Residuals", fontsize=14)
+    axs[1].set_title(f"Benchmark {benchmark_name[-1]}: Dual Residuals", fontsize=14)
     
     for idx, algorithm_key in enumerate(algorithm_order):
         # Check if the algorithm exists in this benchmark

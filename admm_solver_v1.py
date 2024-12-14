@@ -596,7 +596,7 @@ dual_res_seq = [evaluate_dual_residual(z_global)]
 tau_incr = 2
 tau_decr = 2
 nu = 10
-frac = 0.01  # after frac of iterations, stop updating rho
+frac = 0.1  # after frac of iterations, stop updating rho
 
 opt = False
 eps_abs = 1e-4
