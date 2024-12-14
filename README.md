@@ -42,8 +42,11 @@ To replicate the experiments shown in the report, run `chmod +x run_benchmarks.s
 ## Core References
  [1] T. Marcucci, Graphs of Convex Sets with Applications to Optimal Control and Motion Planning. PhD thesis, Massachusetts Institute of Technology, May
  2024. Doctor of Philosophy Thesis.
+
  [2] S. Boyd, N. Parikh, E. Chu, B. Peleato, and J. Eckstein, Distributed Optimization and Statistical Learning via the Alternating Direction Method of
  Multipliers. 2011.
+
  [3] T. Marcucci, J. Umenberger, P. Parrilo, and R. Tedrake, “Shortest paths in graphs of convex sets,” SIAM Journal on Optimization, vol. 34, p. 507–532,
  Feb. 2024.
+ 
  [4] T. Marcucci, M. Petersen, D. von Wrangel, and R. Tedrake, “Motion Planning around Obstacles with Convex Optimization,” arXiv preprint arXiv:2205.04422, 2022. [Online]. Available: https://arxiv.org/abs/2205.04422.
