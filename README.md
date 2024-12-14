@@ -26,18 +26,18 @@ This repository contains 4 solvers:
 
 ## Running
 
-Run any of the following: 
+Run any of the following (depending on which solve you want to use): 
 
     python classic_solver.py --test_file <name_of_test_file>
     python admm_solver_v1.py --test_file <name_of_test_file>
     python admm_solver_v2.py --test_file <name_of_test_file>
     python admm_solver_v3.py --test_file <name_of_test_file>
 
-where `<name_of_test_file>` is the name of any file in the `test_data` directory.
+where `<name_of_test_file>` is the name of the desired test file in the `test_data` directory.
 
 You can generate new test cases using `python test_generator.py`. The parameters passed to `generate_test_2D()` can be modified to change the parameters of the test.
 
-To replicate the experiments shown in the report, run `chmod +x run_benchmarks.sh` to maake the benchmarking script executable, then execute it using `./run_benchmarks.sh`.
+To replicate the experiments shown in the report, run `chmod +x run_benchmarks.sh` to make the benchmarking script executable, then execute it using `./run_benchmarks.sh`.
 
 ## Core References
  [1] T. Marcucci, Graphs of Convex Sets with Applications to Optimal Control and Motion Planning. PhD thesis, Massachusetts Institute of Technology, May
