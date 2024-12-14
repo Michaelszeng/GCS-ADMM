@@ -4,7 +4,7 @@
 
 A novel solver for Piecewise-Linear Shortest Paths [Graph of Convex Sets (GCS) optimization problems](https://groups.csail.mit.edu/robotics-center/public_papers/Marcucci24a.pdf) using the [Alternating Directions Method of Multipliers (ADMM)](https://web.stanford.edu/~boyd/admm.html). In this project, we implemented a few ADMM splitting methods to solve GCS, validating our approach on some simple shortest-path planning problems in 2D. This is early, proof-of-concept work toward a faster, parallelized, ADMM-based solver for general GCS problems.
 
-See the [project report](https://github.com/Michaelszeng/GCS-ADMM/blob/master/Project_Report.pdf) for more technical details.
+See the [technical report](https://github.com/Michaelszeng/GCS-ADMM/blob/master/Project_Report.pdf) for more technical details.
 
 Special thanks to [Alex Amice](https://alexandreamice.github.io/) for the amazing teaching and guidance.
 
