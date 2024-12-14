@@ -1,4 +1,4 @@
-# A Parallelized Solver for Piecewise-Linear Shortest Paths in a Graph of Convex Sets Using the Alternating Directions Method of Multipliers
+# A Parallelized Solver for Piecewise-Linear Shortest Paths in a Graph of Convex Sets (GCS) Using the Alternating Directions Method of Multipliers (ADMM)
 
 ![](thumbnail.png)
 
@@ -11,10 +11,10 @@ Special thanks to [Alex Amice](https://alexandreamice.github.io/) for the amazin
 ## Solvers
 
 This repository contains 4 solvers:
- - `classic_solver.py` solves the shortest path problem using MOSEK with no use of ADMM, included as a baseline for comparison. 
- - `admm_solver_v1.py` solves using the "combined-edge-update vertex-edge split" ADMM method described in the report.
- - `admm_solver_v2.py` solves using the "sequential-edge-update vertex-edge split" ADMM method described in the report.
- - `admm_solver_v3.py` solves using the "full-vertex split" ADMM method described in the report. This is the ADMM-based implementation that seems to work best so far.
+ - `classic_solver.py` uses MOSEK with no use of ADMM, included as a baseline for comparison. 
+ - `admm_solver_v1.py` uses the "combined-edge-update vertex-edge split" ADMM method described in the report.
+ - `admm_solver_v2.py` uses the "sequential-edge-update vertex-edge split" ADMM method described in the report.
+ - `admm_solver_v3.py` uses the "full-vertex split" ADMM method described in the report. This is the ADMM-based implementation that seems to work best so far.
 
 ## Installation
 
